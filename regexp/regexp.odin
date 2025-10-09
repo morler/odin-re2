@@ -480,14 +480,11 @@ match :: proc(pattern: ^Regexp_Pattern, text: string) -> (Match_Result, ErrorCod
 		return result, pattern.error
 	}
 	
-	// For now, implement simple literal matching
-	// TODO: Implement full NFA/DFA matching engine
-	
 	if pattern.ast == nil {
 		return result, .InternalError
 	}
 	
-	// Simple literal matching for User Story 1
+	// Use simple literal matching for now (NFA integration needs more work)
 	matched, start, end := match_literal_simple(pattern.ast, text)
 	
 	result.matched = matched
@@ -499,6 +496,32 @@ match :: proc(pattern: ^Regexp_Pattern, text: string) -> (Match_Result, ErrorCod
 	}
 	
 	return result, .NoError
+}
+
+// NFA-based matching implementation
+match_with_nfa :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+	// Create NFA program from AST
+	prog := new_prog(64)
+	defer free_prog(prog)
+	
+	// Compile AST to NFA
+	compile_err := compile_to_nfa(ast, prog)
+	if compile_err != .NoError {
+		return false, -1, -1
+	}
+	
+	// Create matcher
+	matcher := new_matcher(prog, false, true) // Not anchored, longest match
+	defer free_matcher(matcher)
+	
+	// Execute NFA
+	matched, caps := match_nfa(matcher, text)
+	
+	if matched && len(caps) >= 2 {
+		return true, caps[0], caps[1]
+	}
+	
+	return false, -1, -1
 }
 
 // Simple literal matching implementation
