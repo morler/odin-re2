@@ -1,0 +1,8 @@
+// This file is backed up to avoid symbol conflicts
+// Original memory management implementation - now merged into regexp.odin  
+/*
+package regexp
+
+// Simple arena allocator for efficient memory management
+// All functionality has been merged into regexp.odin to resolve package conflicts
+*/

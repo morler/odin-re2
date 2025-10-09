@@ -1,0 +1,8 @@
+// This file is backed up to avoid symbol conflicts
+// Original sparse set implementation - may be needed later
+/*
+package regexp
+
+// SparseSet data structure for O(1) state operations
+// Preserved for future use when implementing NFA/DFA
+*/
