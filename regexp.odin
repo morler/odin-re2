@@ -447,7 +447,7 @@ regexp :: proc(pattern: string) -> (^Regexp_Pattern, ErrorCode) {
 	p.arena = new_arena(4096) // 4KB initial arena
 	
 	// Parse the pattern
-	ast_node, err := parse_regexp_internal(pattern, .None)
+	ast_node, err := parse_regexp_internal(pattern, .Literal)
 	if err != .NoError {
 		free_arena(p.arena)
 		free(p)
