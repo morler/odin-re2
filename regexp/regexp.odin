@@ -94,8 +94,8 @@ match :: proc(pattern: ^Regexp_Pattern, text: string) -> (Match_Result, ErrorCod
 		return result, .UTF8Error
 	}
 	
-	// Use literal matching for User Story 1
-	matched, start, end := match_literal(pattern.ast, text)
+	// Use pattern matching for User Story 2
+	matched, start, end := match_pattern(pattern.ast, text)
 	
 	result.matched = matched
 	if matched {
@@ -107,6 +107,8 @@ match :: proc(pattern: ^Regexp_Pattern, text: string) -> (Match_Result, ErrorCod
 	
 	return result, .NoError
 }
+
+
 
 // Convenience function for one-shot matching
 match_string :: proc(pattern_str, text: string) -> (bool, ErrorCode) {
@@ -128,8 +130,13 @@ match_string :: proc(pattern_str, text: string) -> (bool, ErrorCode) {
 // LITERAL MATCHING ENGINE (User Story 1)
 // ============================================================================
 
-// Match literal pattern against text
-match_literal :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+// Match pattern against text (supports User Story 2 features)
+match_pattern :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+	return match_pattern_anchored(ast, text, false)
+}
+
+// Match pattern with optional anchoring at position 0
+match_pattern_anchored :: proc(ast: ^Regexp, text: string, anchored: bool) -> (bool, int, int) {
 	if ast == nil {
 		return false, -1, -1
 	}
@@ -147,21 +154,64 @@ match_literal :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
 			return true, 0, 0
 		}
 		
-		// Find literal in text
-		for i in 0..<(len(text) - len(literal_str) + 1) {
-			match := true
-			for j in 0..<len(literal_str) {
-				if text[i + j] != literal_str[j] {
-					match = false
-					break
+		if anchored {
+			// Only match at position 0
+			if len(text) >= len(literal_str) {
+				match := true
+				for j := 0; j < len(literal_str); j += 1 {
+					if text[j] != literal_str[j] {
+						match = false
+						break
+					}
+				}
+				if match {
+					return true, 0, len(literal_str)
 				}
 			}
-			if match {
-				return true, i, i + len(literal_str)
+		} else {
+			// Find literal anywhere in text
+			max_start := len(text) - len(literal_str)
+			for i := 0; i <= max_start; i += 1 {
+				match := true
+				for j := 0; j < len(literal_str); j += 1 {
+					if text[i + j] != literal_str[j] {
+						match = false
+						break
+					}
+				}
+				if match {
+					return true, i, i + len(literal_str)
+				}
 			}
 		}
 		
-		return false, -1, -1
+	case .OpCharClass:
+		// Handle character class matching
+		return match_char_class(ast, text)
+	
+	case .OpAnyChar:
+		// Handle any character matching (.)
+		return match_any_char(ast, text, false)
+	
+	case .OpAnyCharNotNL:
+		// Handle any character except newline
+		return match_any_char(ast, text, true)
+	
+	case .OpBeginLine:
+		// Handle beginning of line anchor (^)
+		return match_begin_line(ast, text)
+	
+	case .OpEndLine:
+		// Handle end of line anchor ($)
+		return match_end_line(ast, text)
+	
+	case .OpAlternate:
+		// Handle alternation (|)
+		return match_alternate(ast, text)
+	
+	case .OpConcat:
+		// Handle concatenation recursively
+		return match_concat(ast, text, anchored)
 	
 	case .NoOp:
 		// Empty pattern matches at position 0
@@ -170,7 +220,7 @@ match_literal :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
 		}
 	
 	default:
-		// For User Story 1, only handle literals and empty patterns
+		// Unsupported operation for current implementation
 		{
 			return false, -1, -1
 		}
@@ -178,6 +228,168 @@ match_literal :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
 	
 	// Default return
 	return false, -1, -1
+}
+
+// Match concatenation by sequentially matching all sub-expressions
+match_concat :: proc(ast: ^Regexp, text: string, anchored: bool) -> (bool, int, int) {
+	if ast == nil || ast.data == nil {
+		return false, -1, -1
+	}
+	
+	concat_data := (^Concat_Data)(ast.data)
+	if concat_data == nil || len(concat_data.subs) == 0 {
+		return false, -1, -1
+	}
+	
+	// Special handling for patterns with anchors
+	has_begin_anchor := false
+	has_end_anchor := false
+	
+	for sub in concat_data.subs {
+		if sub != nil {
+			if sub.op == .OpBeginLine {
+				has_begin_anchor = true
+			}
+			if sub.op == .OpEndLine {
+				has_end_anchor = true
+			}
+		}
+	}
+	
+	// If pattern has anchors, restrict matching positions
+	start_pos := 0
+	end_pos := len(text)
+	
+	if has_begin_anchor {
+		start_pos = 0  // Can only start at position 0
+	}
+	if has_end_anchor {
+		end_pos = 0    // Can only end at len(text)
+	}
+	
+	// For patterns with begin anchor, only try position 0
+	if has_begin_anchor {
+		i := 0
+		current_pos := i
+		total_match := true
+		
+		// Try to match each sub-expression sequentially
+		for sub in concat_data.subs {
+			if sub == nil {
+				total_match = false
+				break
+			}
+			
+			// Special handling for anchors
+			if sub.op == .OpBeginLine {
+				// Already at position 0, zero-width match
+				continue
+			}
+			
+			if sub.op == .OpEndLine {
+				if current_pos != len(text) {
+					total_match = false
+					break
+				}
+				// Zero-width match, don't advance position
+				continue
+			}
+			
+			// Match this sub-expression at the current position (anchored)
+			sub_matched, sub_start, sub_end := match_pattern_anchored(sub, text[current_pos:], true)
+			if !sub_matched {
+				total_match = false
+				break
+			}
+			
+			// Advance position by the width of this match
+			match_width := sub_end - sub_start
+			current_pos += match_width
+		}
+		
+		if total_match {
+			// Successful match of all sub-expressions
+			return true, i, current_pos
+		}
+	} else {
+		// No begin anchor, try all positions
+		max_start := len(text)
+		for i := 0; i <= max_start; i += 1 {
+			current_pos := i
+			total_match := true
+			
+			// Try to match each sub-expression sequentially
+			for sub in concat_data.subs {
+				if sub == nil {
+					total_match = false
+					break
+				}
+				
+				// Special handling for end anchor
+				if sub.op == .OpEndLine {
+					if current_pos != len(text) {
+						total_match = false
+						break
+					}
+					// Zero-width match, don't advance position
+					continue
+				}
+				
+				// Match this sub-expression at the current position (anchored)
+				sub_matched, sub_start, sub_end := match_pattern_anchored(sub, text[current_pos:], true)
+				if !sub_matched {
+					total_match = false
+					break
+				}
+				
+				// Advance position by the width of this match
+				current_pos += (sub_end - sub_start)
+			}
+			
+			if total_match {
+				// Successful match of all sub-expressions
+				return true, i, current_pos
+			}
+		}
+	}
+	
+	return false, -1, -1
+}
+
+// Extract string from AST (handles literals and nested concats)
+extract_string_from_ast :: proc(ast: ^Regexp) -> string {
+	if ast == nil {
+		return ""
+	}
+	
+	#partial switch ast.op {
+	case .OpLiteral:
+		if ast.data != nil {
+			lit_data := (^Literal_Data)(ast.data)
+			return to_string(lit_data.str)
+		}
+		
+	case .OpConcat:
+		if ast.data != nil {
+			concat_data := (^Concat_Data)(ast.data)
+			result: [256]byte
+			result_len := 0
+			
+			for sub in concat_data.subs {
+				sub_str := extract_string_from_ast(sub)
+				for ch in sub_str {
+					if result_len < len(result) {
+						result[result_len] = byte(ch)
+						result_len += 1
+					}
+				}
+			}
+			
+			return string(result[:result_len])
+		}
+	}
+	
+	return ""
 }
 
 // ============================================================================
@@ -258,4 +470,111 @@ pattern_stats :: proc(pattern: ^Regexp_Pattern) -> (node_count: int, capture_cou
 	capture_count = count_captures(pattern.ast)
 	
 	return
+}
+
+// ============================================================================
+// USER STORY 2 MATCHING FUNCTIONS
+// ============================================================================
+
+// Match character class [abc], [a-z], [^abc]
+match_char_class :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+	if ast == nil || ast.data == nil {
+		return false, -1, -1
+	}
+	
+	char_class_data := (^CharClass_Data)(ast.data)
+	if char_class_data == nil {
+		return false, -1, -1
+	}
+	
+	// Character class matches exactly one character
+	if len(text) == 0 {
+		return false, -1, -1
+	}
+	
+	// Get first character from text (as rune)
+	first_char := rune(text[0]) // Simplified: only handle ASCII for now
+	
+	// Check if character matches the class
+	matches := char_class_matches(char_class_data, first_char)
+	
+	if matches {
+		return true, 0, 1
+	}
+	
+	return false, -1, -1
+}
+
+// Check if a character matches a character class
+char_class_matches :: proc(char_class: ^CharClass_Data, ch: rune) -> bool {
+	if char_class == nil {
+		return false
+	}
+	
+	// Check each range
+	for range in char_class.ranges {
+		if ch >= range.lo && ch <= range.hi {
+			// Character is in range
+			return !char_class.negated
+		}
+	}
+	
+	// Character not in any range
+	return char_class.negated
+}
+
+// Match any character (.)
+match_any_char :: proc(ast: ^Regexp, text: string, except_newline: bool) -> (bool, int, int) {
+	if len(text) == 0 {
+		return false, -1, -1
+	}
+	
+	first_char := rune(text[0])
+	
+	// Check if it's a newline and we should exclude it
+	if except_newline && first_char == '\n' {
+		return false, -1, -1
+	}
+	
+	return true, 0, 1
+}
+
+// Match beginning of line anchor (^)
+match_begin_line :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+	// Beginning of line only matches at position 0
+	// This should only be called when actually at position 0
+	return true, 0, 0
+}
+
+// Match end of line anchor ($)
+match_end_line :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+	// End of line only matches at end of text
+	// This should only be called when actually at end of text
+	return true, 0, 0
+}
+
+// Match alternation (a|b)
+match_alternate :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+	if ast == nil || ast.data == nil {
+		return false, -1, -1
+	}
+	
+	alt_data := (^Alternate_Data)(ast.data)
+	if alt_data == nil || len(alt_data.subs) == 0 {
+		return false, -1, -1
+	}
+	
+	// Try each alternative
+	for sub in alt_data.subs {
+		if sub == nil {
+			continue
+		}
+		
+		matched, start, end := match_pattern(sub, text)
+		if matched {
+			return true, start, end
+		}
+	}
+	
+	return false, -1, -1
 }

@@ -253,7 +253,8 @@ parse_alternation :: proc(p: ^Parser) -> ^Regexp {
 		if right == nil {
 			return nil
 		}
-		node = make_alternate_binary(p.arena, node, right)
+		alts := [2]^Regexp{node, right}
+		node = make_alternate(p.arena, alts[:])
 	}
 	
 	return node
@@ -291,7 +292,8 @@ parse_concat :: proc(p: ^Parser) -> ^Regexp {
 	// Build concatenation tree
 	result := nodes[0]
 	for i in 1..<count {
-		result = make_concat_binary(p.arena, result, nodes[i])
+		concats := [2]^Regexp{result, nodes[i]}
+		result = make_concat(p.arena, concats[:])
 	}
 	
 	return result
@@ -538,8 +540,13 @@ parse_escape :: proc(p: ^Parser) -> ^Regexp {
 	case '^': return make_literal(p.arena, "^")
 	case '$': return make_literal(p.arena, "$")
 	case:
-		// For now, treat unknown escapes as literal
-		return make_literal(p.arena, string([]byte{byte(ch)}))
+		// For now, treat unknown escapes as literal character
+		if !at_end(p) {
+			ch := byte(peek(p))
+			advance(p)
+			return make_literal(p.arena, string([]byte{ch}))
+		}
+		return nil
 	}
 }
 
@@ -562,7 +569,14 @@ parse_literal_char :: proc(p: ^Parser) -> ^Regexp {
 		}
 	}
 	
-	return make_literal(p.arena, string([]byte{byte(ch)}))
+	// Convert rune to string using UTF-8 encoding
+	if ch <= 0x7F {
+		// ASCII character - single byte
+		return make_literal(p.arena, string([]byte{byte(ch)}))
+	} else {
+		// For now, handle only ASCII
+		return make_literal(p.arena, "")
+	}
 }
 
 // Parse term with optional quantifier
@@ -674,16 +688,18 @@ parse_repeat :: proc(p: ^Parser, base: ^Regexp) -> ^Regexp {
 		has_max = true
 		
 		// Parse maximum (optional)
-		max_str := ""
-		for !at_end(p) && is_digit(byte(peek(p))) {
-			max_str += string([]byte{byte(peek(p))})
+		max_digits := [10]byte{}
+		max_len := 0
+		for !at_end(p) && is_digit(byte(peek(p))) && max_len < 10 {
+			max_digits[max_len] = byte(peek(p))
+			max_len += 1
 			advance(p)
 		}
 		
-		if max_str != "" {
+		if max_len > 0 {
 			max = 0
-			for ch in max_str {
-				max = max * 10 + (int(ch) - int('0'))
+			for i in 0..<max_len {
+				max = max * 10 + int(max_digits[i] - '0')
 			}
 		} else {
 			// {n,} means n or more
@@ -697,7 +713,7 @@ parse_repeat :: proc(p: ^Parser, base: ^Regexp) -> ^Regexp {
 	
 	advance(p) // Consume '}'
 	
-	return make_repeat_simple(p.arena, base, min, max)
+	return make_repeat(p.arena, .OpRepeat, base, min, max, false)
 }
 
 // Check if character is digit

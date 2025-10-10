@@ -123,6 +123,23 @@ make_string_view :: proc(s: string) -> String_View {
 	return String_View{data = raw_data(s), len = len(s)}
 }
 
+// Create string view with copied data (for persistent storage)
+make_string_view_copy :: proc(arena: ^Arena, s: string) -> String_View {
+	if len(s) == 0 {
+		return String_View{data = nil, len = 0}
+	}
+	
+	data := arena_alloc(arena, len(s))
+	data_bytes := ([^]u8)(data)
+	
+	// Copy bytes manually
+	for i := 0; i < len(s); i += 1 {
+		data_bytes[i] = s[i]
+	}
+	
+	return String_View{data = data_bytes, len = len(s)}
+}
+
 // Create string view from pointer and length
 make_string_view_ptr :: proc(data: [^]u8, len: int) -> String_View {
 	return String_View{data = data, len = len}

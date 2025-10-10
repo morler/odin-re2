@@ -4,6 +4,7 @@ package regexp
 // Core data structures matching RE2 exactly for compatibility
 
 import "base:runtime"
+import "core:fmt"
 
 // Regular expression operation types (must match RE2 exactly)
 Regexp_Op :: enum {
@@ -99,7 +100,7 @@ make_literal :: proc(arena: ^Arena, str: string) -> ^Regexp {
 	}
 	
 	lit_data := (^Literal_Data)(node.data)
-	lit_data^ = Literal_Data{str = make_string_view(str)}
+	lit_data^ = Literal_Data{str = make_string_view_copy(arena, str)}
 	
 	return node
 }
@@ -388,3 +389,21 @@ simplify :: proc(arena: ^Arena, node: ^Regexp) -> ^Regexp {
 	
 	return node
 }
+
+// ===== Convenience Constructor Functions =====
+
+// Create star quantifier (*)
+make_star :: proc(arena: ^Arena, sub: ^Regexp) -> ^Regexp {
+	return make_repeat(arena, .OpStar, sub, 0, -1, false)
+}
+
+// Create plus quantifier (+)
+make_plus :: proc(arena: ^Arena, sub: ^Regexp) -> ^Regexp {
+	return make_repeat(arena, .OpPlus, sub, 1, -1, false)
+}
+
+// Create question quantifier (?)
+make_quest :: proc(arena: ^Arena, sub: ^Regexp) -> ^Regexp {
+	return make_repeat(arena, .OpQuest, sub, 0, 1, false)
+}
+
