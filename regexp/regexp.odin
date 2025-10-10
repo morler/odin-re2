@@ -209,6 +209,26 @@ match_pattern_anchored :: proc(ast: ^Regexp, text: string, anchored: bool) -> (b
 		// Handle alternation (|)
 		return match_alternate(ast, text)
 	
+	case .OpStar:
+		// Handle Kleene star (*)
+		return match_star(ast, text, anchored)
+	
+	case .OpPlus:
+		// Handle Kleene plus (+)
+		return match_plus(ast, text, anchored)
+	
+	case .OpQuest:
+		// Handle question mark (?)
+		return match_quest(ast, text, anchored)
+	
+	case .OpRepeat:
+		// Handle repeat {n,m}
+		return match_repeat(ast, text, anchored)
+	
+	case .OpCapture:
+		// Handle capturing group (...)
+		return match_capture(ast, text, anchored)
+	
 	case .OpConcat:
 		// Handle concatenation recursively
 		return match_concat(ast, text, anchored)
@@ -577,4 +597,211 @@ match_alternate :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
 	}
 	
 	return false, -1, -1
+}
+
+// ============================================================================
+// QUANTIFIER MATCHING FUNCTIONS
+// ============================================================================
+
+// Match Kleene star (*)
+match_star :: proc(ast: ^Regexp, text: string, anchored: bool) -> (bool, int, int) {
+	if ast == nil || ast.data == nil {
+		return false, -1, -1
+	}
+	
+	repeat_data := (^Repeat_Data)(ast.data)
+	if repeat_data == nil || repeat_data.sub == nil {
+		return false, -1, -1
+	}
+	
+	// Star matches 0 or more occurrences
+	// Try to match as many as possible, then backtrack
+	
+	max_matches := len(text) + 1 // Maximum possible matches
+	best_match := -1
+	
+	// Try from max matches down to 0
+	for count := max_matches; count >= 0; count -= 1 {
+		current_pos := 0
+		all_matched := true
+		
+		// Try to match 'count' occurrences
+		for i := 0; i < count; i += 1 {
+			sub_matched, sub_start, sub_end := match_pattern_anchored(repeat_data.sub, text[current_pos:], true)
+			if !sub_matched {
+				all_matched = false
+				break
+			}
+			
+			// For zero-width matches, avoid infinite loops
+			if sub_end == sub_start {
+				all_matched = false
+				break
+			}
+			
+			current_pos += (sub_end - sub_start)
+			if current_pos > len(text) {
+				all_matched = false
+				break
+			}
+		}
+		
+		if all_matched {
+			best_match = current_pos
+			break
+		}
+	}
+	
+	if best_match >= 0 {
+		return true, 0, best_match
+	}
+	
+	return false, -1, -1
+}
+
+// Match Kleene plus (+)
+match_plus :: proc(ast: ^Regexp, text: string, anchored: bool) -> (bool, int, int) {
+	if ast == nil || ast.data == nil {
+		return false, -1, -1
+	}
+	
+	repeat_data := (^Repeat_Data)(ast.data)
+	if repeat_data == nil || repeat_data.sub == nil {
+		return false, -1, -1
+	}
+	
+	// Plus matches 1 or more occurrences
+	// First match one occurrence, then try to match as many more as possible
+	
+	// Match first occurrence (required)
+	first_matched, first_start, first_end := match_pattern_anchored(repeat_data.sub, text, true)
+	if !first_matched {
+		return false, -1, -1
+	}
+	
+	// For zero-width first match, just return it
+	if first_end == first_start {
+		return true, first_start, first_end
+	}
+	
+	current_pos := first_end
+	
+	// Try to match additional occurrences greedily
+	test_pos := current_pos
+	for {
+		sub_matched, sub_start, sub_end := match_pattern_anchored(repeat_data.sub, text[test_pos:], true)
+		if !sub_matched {
+			break
+		}
+		
+		// For zero-width matches, avoid infinite loops
+		if sub_end == sub_start {
+			break
+		}
+		
+		test_pos += (sub_end - sub_start)
+		if test_pos > len(text) {
+			break
+		}
+	}
+	
+	// Return the full match
+	return true, first_start, test_pos
+}
+
+// Match question mark (?)
+match_quest :: proc(ast: ^Regexp, text: string, anchored: bool) -> (bool, int, int) {
+	if ast == nil || ast.data == nil {
+		return false, -1, -1
+	}
+	
+	repeat_data := (^Repeat_Data)(ast.data)
+	if repeat_data == nil || repeat_data.sub == nil {
+		return false, -1, -1
+	}
+	
+	// Question mark matches 0 or 1 occurrence
+	// Try to match one occurrence first
+	sub_matched, sub_start, sub_end := match_pattern_anchored(repeat_data.sub, text, true)
+	if sub_matched {
+		return true, sub_start, sub_end
+	}
+	
+	// If no match, return empty match (0 occurrences)
+	return true, 0, 0
+}
+
+// Match repeat {n,m}
+match_repeat :: proc(ast: ^Regexp, text: string, anchored: bool) -> (bool, int, int) {
+	if ast == nil || ast.data == nil {
+		return false, -1, -1
+	}
+	
+	repeat_data := (^Repeat_Data)(ast.data)
+	if repeat_data == nil || repeat_data.sub == nil {
+		return false, -1, -1
+	}
+	
+	min := repeat_data.min
+	max := repeat_data.max
+	if max == -1 {
+		max = len(text) + 1 // Unlimited
+	}
+	
+	// Clamp max to reasonable value
+	if max > len(text) + 1 {
+		max = len(text) + 1
+	}
+	
+	// Try to match from max down to min occurrences
+	for count := max; count >= min; count -= 1 {
+		current_pos := 0
+		all_matched := true
+		
+		// Try to match 'count' occurrences
+		for i := 0; i < count; i += 1 {
+			sub_matched, sub_start, sub_end := match_pattern_anchored(repeat_data.sub, text[current_pos:], true)
+			if !sub_matched {
+				all_matched = false
+				break
+			}
+			
+			// For zero-width matches, avoid infinite loops
+			if sub_end == sub_start && i < count - 1 {
+				all_matched = false
+				break
+			}
+			
+			current_pos += (sub_end - sub_start)
+			if current_pos > len(text) {
+				all_matched = false
+				break
+			}
+		}
+		
+		if all_matched {
+			return true, 0, current_pos
+		}
+	}
+	
+	return false, -1, -1
+}
+
+// ============================================================================
+// CAPTURE GROUP MATCHING FUNCTIONS
+// ============================================================================
+
+// Match capture group (...)
+match_capture :: proc(ast: ^Regexp, text: string, anchored: bool) -> (bool, int, int) {
+	if ast == nil || ast.data == nil {
+		return false, -1, -1
+	}
+	
+	capture_data := (^Capture_Data)(ast.data)
+	if capture_data == nil || capture_data.sub == nil {
+		return false, -1, -1
+	}
+	
+	// For now, just match the sub-expression (capture handling will be added later)
+	return match_pattern_anchored(capture_data.sub, text, anchored)
 }

@@ -271,7 +271,7 @@ parse_concat :: proc(p: ^Parser) -> ^Regexp {
 			break // End of this concatenation
 		}
 		
-		node := parse_term(p)
+		node := parse_quantified_term(p)
 		if node == nil {
 			return nil
 		}
@@ -668,15 +668,21 @@ parse_repeat :: proc(p: ^Parser, base: ^Regexp) -> ^Regexp {
 	advance(p) // Consume '{'
 	
 	// Parse minimum
-	min_str := ""
+	min_digits := [10]byte{}
+	min_len := 0
+	for !at_end(p) && is_digit(byte(peek(p))) && min_len < 10 {
+		min_digits[min_len] = byte(peek(p))
+		min_len += 1
+		advance(p)
+	}
 	
-	if min_str == "" {
+	if min_len == 0 {
 		return nil // Expected number
 	}
 	
 	min := 0
-	for ch in min_str {
-		min = min * 10 + (int(ch) - int('0'))
+	for i in 0..<min_len {
+		min = min * 10 + int(min_digits[i] - '0')
 	}
 	
 	// Check for comma
