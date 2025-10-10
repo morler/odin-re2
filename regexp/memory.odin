@@ -3,7 +3,7 @@ package regexp
 // Arena memory allocator for high-performance regex compilation and matching
 // Provides deterministic memory usage and excellent performance
 
-import "core:mem"
+import "base:runtime"
 
 // Memory chunk for arena allocation
 Memory_Chunk :: struct {
@@ -31,7 +31,7 @@ new_arena :: proc(initial_capacity: int = 4096) -> ^Arena {
 	arena.data = make([]byte, initial_capacity)
 	arena.capacity = initial_capacity
 	arena.offset = 0
-	arena.chunks = make([]Memory_Chunk, 0, 8)
+	arena.chunks = []Memory_Chunk{}
 	return arena
 }
 
@@ -41,7 +41,7 @@ arena_alloc :: proc(arena: ^Arena, size: int) -> rawptr {
 	assert(size > 0, "Size must be positive")
 	
 	// Align to 8-byte boundary for performance
-	aligned_size := (size + 7) & ~7
+	aligned_size := (size + 7) & 0xFFFFFFF8
 	
 	if arena.offset + aligned_size > arena.capacity {
 		// Need to expand arena
@@ -50,9 +50,13 @@ arena_alloc :: proc(arena: ^Arena, size: int) -> rawptr {
 			new_capacity = arena.offset + aligned_size
 		}
 		
-		new_data := make([]byte, new_capacity)
-		mem.copy(new_data, arena.data, arena.offset)
-		delete(arena.data)
+		new_data: []byte
+		new_data, _ = runtime.make_slice([]byte, new_capacity)
+		if len(new_data) == 0 {
+			return nil
+		}
+		copy(new_data, arena.data)
+		// arena.data will be garbage collected
 		arena.data = new_data
 		arena.capacity = new_capacity
 	}
@@ -71,7 +75,7 @@ arena_alloc_batch :: proc(arena: ^Arena, sizes: []int) -> []rawptr {
 	
 	// Calculate total aligned size
 	for size in sizes {
-		aligned_size := (size + 7) & ~7
+		aligned_size := (size + 7) & 0xFFFFFFF8
 		total_size += aligned_size
 	}
 	
@@ -81,8 +85,8 @@ arena_alloc_batch :: proc(arena: ^Arena, sizes: []int) -> []rawptr {
 	
 	for i, size in sizes {
 		result[i] = current_ptr
-		aligned_size := (size + 7) & ~7
-		current_ptr = mem.ptr_offset(current_ptr, aligned_size)
+		aligned_size := (size + 7) & 0xFFFFFFF8
+		current_ptr = cast(rawptr) (uintptr(current_ptr) + uintptr(aligned_size))
 	}
 	
 	return result
@@ -130,24 +134,33 @@ to_string :: proc(sv: String_View) -> string {
 }
 
 // Check if string view is empty
-is_empty :: proc(sv: String_View) -> bool {
+string_view_is_empty :: proc(sv: String_View) -> bool {
 	return sv.len == 0
 }
 
 // Compare two string views
-equal :: proc(a, b: String_View) -> bool {
+string_view_equal :: proc(a, b: String_View) -> bool {
 	if a.len != b.len {
 		return false
 	}
 	if a.len == 0 {
 		return true
 	}
-	return mem.compare(a.data, b.data, a.len) == 0
+	if a.len != b.len {
+		return false
+	}
+	for i in 0..<a.len {
+		if a.data[i] != b.data[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // UTF-8 Iterator for efficient character processing
 UTF8_Iterator :: struct {
 	data:    [^]u8,    // UTF-8 byte sequence
+	len:     int,      // Length of data
 	pos:     int,      // Current position
 	current: rune,     // Current Unicode character
 	width:   int,      // Width of current character in bytes
@@ -157,6 +170,7 @@ UTF8_Iterator :: struct {
 make_utf8_iterator :: proc(sv: String_View) -> UTF8_Iterator {
 	iter := UTF8_Iterator{
 		data = sv.data,
+		len = sv.len,
 		pos = 0,
 		current = 0,
 		width = 0,
@@ -172,7 +186,7 @@ make_utf8_iterator :: proc(sv: String_View) -> UTF8_Iterator {
 
 // Get next UTF-8 character
 utf8_next :: proc(iter: ^UTF8_Iterator) -> bool {
-	if iter.pos >= len(iter.data) {
+	if iter.pos >= iter.len {
 		iter.current = 0
 		iter.width = 0
 		return false
@@ -190,7 +204,7 @@ utf8_next :: proc(iter: ^UTF8_Iterator) -> bool {
 	// Full UTF-8 decoding for Unicode characters
 	if first_byte & 0xE0 == 0xC0 {
 		// 2-byte sequence
-		if iter.pos + 1 < len(iter.data) {
+		if iter.pos + 1 < iter.len {
 			iter.current = rune((rune(first_byte & 0x1F) << 6) | rune(iter.data[iter.pos + 1] & 0x3F))
 			iter.width = 2
 			iter.pos += 2
@@ -198,7 +212,7 @@ utf8_next :: proc(iter: ^UTF8_Iterator) -> bool {
 		}
 	} else if first_byte & 0xF0 == 0xE0 {
 		// 3-byte sequence
-		if iter.pos + 2 < len(iter.data) {
+		if iter.pos + 2 < iter.len {
 			iter.current = rune((rune(first_byte & 0x0F) << 12) |
 			                   (rune(iter.data[iter.pos + 1] & 0x3F) << 6) |
 			                   rune(iter.data[iter.pos + 2] & 0x3F))
@@ -208,7 +222,7 @@ utf8_next :: proc(iter: ^UTF8_Iterator) -> bool {
 		}
 	} else if first_byte & 0xF8 == 0xF0 {
 		// 4-byte sequence
-		if iter.pos + 3 < len(iter.data) {
+		if iter.pos + 3 < iter.len {
 			iter.current = rune((rune(first_byte & 0x07) << 18) |
 			                   (rune(iter.data[iter.pos + 1] & 0x3F) << 12) |
 			                   (rune(iter.data[iter.pos + 2] & 0x3F) << 6) |
@@ -228,7 +242,7 @@ utf8_next :: proc(iter: ^UTF8_Iterator) -> bool {
 
 // Check if iterator has more characters
 utf8_has_more :: proc(iter: ^UTF8_Iterator) -> bool {
-	return iter.pos < len(iter.data)
+	return iter.pos < iter.len
 }
 
 // Peek at current character without advancing

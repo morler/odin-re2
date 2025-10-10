@@ -1,6 +1,6 @@
 package regexp
 
-import "core:fmt"
+
 
 // NFA matcher implementation using Thompson's construction
 // Provides linear-time matching guarantee as required by RE2
@@ -26,7 +26,7 @@ Matcher :: struct {
 	anchored:    bool,
 	longest:     bool,
 	queue:       Queue,
-	visited:     ^SparseSet,
+	visited:     ^Sparse_Set,
 	thread_pool: []Thread,
 }
 
@@ -44,7 +44,9 @@ new_matcher :: proc(prog: ^Prog, anchored: bool, longest: bool) -> ^Matcher {
 	matcher.queue.size = 0
 	
 	// Initialize visited set for state deduplication
-	matcher.visited = new_sparse_set(u32(len(prog.inst) + 1))
+	temp_arena := new_arena(1024)
+	defer free_arena(temp_arena)
+	matcher.visited = new_sparse_set(temp_arena, u32(len(prog.inst) + 1))
 	
 	// Initialize thread pool
 	matcher.thread_pool = make([]Thread, 64)
@@ -56,7 +58,7 @@ new_matcher :: proc(prog: ^Prog, anchored: bool, longest: bool) -> ^Matcher {
 free_matcher :: proc(matcher: ^Matcher) {
 	if matcher != nil {
 		delete(matcher.queue.threads)
-		free_sparse_set(matcher.visited)
+		// visited will be cleaned up when arena is freed
 		delete(matcher.thread_pool)
 		free(matcher)
 	}
@@ -79,11 +81,24 @@ match_nfa :: proc(matcher: ^Matcher, text: string) -> (bool, []int) {
 	for i in 0..<len(initial_thread.cap) {
 		initial_thread.cap[i] = -1
 	}
+	// Set start position for full match (capture group 0)
+	if len(initial_thread.cap) > 0 {
+		initial_thread.cap[0] = 0
+	}
 	
 	// Add initial thread
 	if !enqueue(&matcher.queue, initial_thread) {
 		delete(initial_thread.cap)
 		return false, nil
+	}
+	
+	// Handle empty program (should match at position 0)
+	if len(matcher.prog.inst) == 0 {
+		delete(initial_thread.cap)
+		caps := make([]int, 2)
+		caps[0] = 0
+		caps[1] = 0
+		return true, caps
 	}
 	
 	// Execute NFA
@@ -94,7 +109,7 @@ match_nfa :: proc(matcher: ^Matcher, text: string) -> (bool, []int) {
 		// Process all threads at this position
 		step_count := matcher.queue.size
 		
-		for i in 0..<step_count {
+		for _ in 0..<step_count {
 			thread := dequeue(&matcher.queue)
 		if thread.pc == u32(len(matcher.prog.inst)) {
 			// Reached accepting state
@@ -111,7 +126,6 @@ match_nfa :: proc(matcher: ^Matcher, text: string) -> (bool, []int) {
 		}
 			
 			// Execute instruction
-			inst := matcher.prog.inst[thread.pc]
 			execute_inst(matcher, thread, pos)
 			delete(thread.cap)
 		}
@@ -276,13 +290,15 @@ compile_to_nfa :: proc(ast: ^Regexp, prog: ^Prog) -> ErrorCode {
 	
 	// For User Story 1, only handle literals
 	#partial switch ast.op {
-	case .Literal:
+	case .OpLiteral:
 		if ast.data != nil {
 			lit_data := (^Literal_Data)(ast.data)
+			prog.num_cap = 1 // At least one capture group for the full match
 			
 			// Add rune instructions for each character
-			for i in 0..<len(lit_data.value) {
-				r := rune(lit_data.value[i])
+			literal_str := to_string(lit_data.str)
+			for i in 0..<len(literal_str) {
+				r := rune(literal_str[i])
 				inst_index := add_inst(prog, .Rune1, 0, u32(r))
 				if i == 0 {
 					prog.start = inst_index
@@ -294,15 +310,21 @@ compile_to_nfa :: proc(ast: ^Regexp, prog: ^Prog) -> ErrorCode {
 			}
 			
 			// Add final match instruction
-			if len(lit_data.value) > 0 {
+			if len(literal_str) > 0 {
 				final_index := add_inst(prog, .Match, 0, 0)
 				prog.inst[len(prog.inst) - 2].out = final_index
+			} else {
+				// Empty literal - just add match instruction
+				match_index := add_inst(prog, .Match, 0, 0)
+				prog.start = match_index
 			}
 		}
 		
 	case .NoOp:
 		// Empty pattern - just add match instruction
-		prog.start = add_inst(prog, .Match, 0, 0)
+		match_index := add_inst(prog, .Match, 0, 0)
+		prog.start = match_index
+		prog.num_cap = 1 // At least one capture group for the full match
 	}
 	
 	return .NoError

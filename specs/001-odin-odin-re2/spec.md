@@ -72,6 +72,13 @@ Users need to use capturing groups (parentheses) and alternation (pipe operator)
 - **FR-004**: System MUST provide complete RE2-compatible API surface
 - **FR-005**: System MUST handle Unicode UTF-8 input correctly throughout
 
+### Edge Case Requirements
+
+- **FR-EC-001**: System MUST return MemoryError when pattern compilation exceeds configurable memory limits
+- **FR-EC-002**: System MUST return UTF8Error with byte position when input text contains invalid UTF-8 sequences  
+- **FR-EC-003**: System MUST reject patterns with nesting depth exceeding configurable limits with TooComplex error
+- **FR-EC-004**: System MUST maintain O(n) complexity for pathological quantifier patterns like "a*a*a*a*a*a*"
+
 ### RE2-Specific Requirements *(if regex feature)*
 
 - **FR-RE2-001**: Implementation MUST preserve RE2's linear-time complexity guarantee

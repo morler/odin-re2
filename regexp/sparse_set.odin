@@ -3,7 +3,7 @@ package regexp
 // SparseSet data structure for O(1) state management in NFA execution
 // Critical for maintaining RE2's linear-time complexity guarantee
 
-import "core:mem"
+
 
 // SparseSet provides O(1) insertion, deletion, and membership testing
 // Uses two arrays: dense (actual elements) and sparse (indices)
@@ -228,7 +228,7 @@ to_slice :: proc(ss: ^Sparse_Set, arena: ^Arena) -> []u32 {
 	assert(ss != nil, "SparseSet cannot be nil")
 	
 	result := make([]u32, ss.size)
-	mem.copy(result, ss.dense, ss.size * size_of(u32))
+	copy(result, ss.dense[:ss.size])
 	return result
 }
 

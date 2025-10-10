@@ -1,6 +1,6 @@
 package regexp
 
-import "core:fmt"
+
 
 // RE2-compatible instruction set for NFA execution
 // Based on Russ Cox's RE2 implementation

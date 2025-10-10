@@ -102,6 +102,39 @@ test_unicode_pattern_matching :: proc(t: ^testing.T) {
 	testing.expect(t, result.full_match.end == 6, "Unicode match should end at byte 6")
 }
 
+// Test escape sequence handling
+@(test)
+test_escape_sequence_handling :: proc(t: ^testing.T) {
+	// Test backslash escape sequences
+	pattern1, compile_err1 := regexp.regexp("hello\\sworld")
+	testing.expect(t, compile_err1 == regexp.ErrorCode.NoError, "Pattern with \\s compilation failed: %v", regexp.error_string(compile_err1))
+	defer regexp.free_regexp(pattern1)
+	
+	// For now, treat \\s as literal "\s" (special chars will be implemented in User Story 2)
+	result1, match_err1 := regexp.match(pattern1, "hello\\sworld")
+	testing.expect(t, match_err1 == regexp.ErrorCode.NoError, "Escape sequence matching failed: %v", regexp.error_string(match_err1))
+	testing.expect(t, result1.matched, "Pattern with escape should match literal")
+	
+	// Test escaped backslash
+	pattern2, compile_err2 := regexp.regexp("hello\\\\world")
+	testing.expect(t, compile_err2 == regexp.ErrorCode.NoError, "Pattern with \\\\ compilation failed: %v", regexp.error_string(compile_err2))
+	defer regexp.free_regexp(pattern2)
+	
+	result2, match_err2 := regexp.match(pattern2, "hello\\\\world")
+	testing.expect(t, match_err2 == regexp.ErrorCode.NoError, "Escaped backslash matching failed: %v", regexp.error_string(match_err2))
+	testing.expect(t, result2.matched, "Pattern with escaped backslash should match")
+	
+	// Test escaped special characters
+	pattern3, compile_err3 := regexp.regexp("hello\\.world")
+	testing.expect(t, compile_err3 == regexp.ErrorCode.NoError, "Pattern with \\. compilation failed: %v", regexp.error_string(compile_err3))
+	defer regexp.free_regexp(pattern3)
+	
+	// For now, treat \. as literal "\." (dot special behavior will be implemented in User Story 2)
+	result3, match_err3 := regexp.match(pattern3, "hello\\.world")
+	testing.expect(t, match_err3 == regexp.ErrorCode.NoError, "Escaped dot matching failed: %v", regexp.error_string(match_err3))
+	testing.expect(t, result3.matched, "Pattern with escaped dot should match literal")
+}
+
 // Test convenience function match_string
 @(test)
 test_match_string_convenience :: proc(t: ^testing.T) {

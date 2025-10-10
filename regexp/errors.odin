@@ -98,9 +98,9 @@ error_description :: proc(info: Error_Info) -> string {
 		// Show context around error position
 		start := max(0, info.pos - 10)
 		end := min(len(info.pattern), info.pos + 10)
-		context := info.pattern[start:end]
+		ctx := info.pattern[start:end]
 		
-		return fmt.tprintf("%s at position %d: %q", info.message, info.pos, context)
+		return fmt.tprintf("%s at position %d: %q", info.message, info.pos, ctx)
 	}
 	
 	return info.message
@@ -168,18 +168,18 @@ format_error_position :: proc(pattern: string, pos: int) -> string {
 	}
 	
 	// Build pattern with position indicator
-	builder := strings.make_builder()
-	defer strings.destroy_builder(builder)
+	builder := strings.Builder{}
+
 	
 	// Add pattern line
-	strings.write_string(builder, pattern)
-	strings.write_byte(builder, '\n')
+	strings.write_string(&builder, pattern)
+	strings.write_byte(&builder, '\n')
 	
 	// Add position indicator line
-	for i in 0..<pos {
-		strings.write_byte(builder, ' ')
+	for _ in 0..<pos {
+		strings.write_byte(&builder, ' ')
 	}
-	strings.write_byte(builder, '^')
+	strings.write_byte(&builder, '^')
 	
 	return strings.to_string(builder)
 }
@@ -201,7 +201,7 @@ validate_error_info :: proc(info: Error_Info) -> bool {
 
 // Error recovery suggestions
 get_error_suggestion :: proc(code: ErrorCode) -> string {
-	switch code {
+	#partial switch code {
 	case .ErrorTrailingBackslash:
 		return "Remove the trailing backslash or escape it as \\\\"
 	case .ErrorMissingParen:
