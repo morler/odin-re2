@@ -3,7 +3,10 @@ package regexp
 // Main public API for RE2-compatible regular expression engine in Odin
 // This file provides the core interface functions
 
+import "core:fmt"
 import "core:testing"
+import "core:strings"
+import "core:unicode"
 
 // ============================================================================
 // ERROR HANDLING (from errors.odin)
@@ -898,6 +901,13 @@ match_literal_simple :: proc(ast: ^Regexp, text: string, anchor_start: bool = fa
 		// Empty pattern matches at position 0
 		return true, 0, 0
 		
+case .Star, .Plus, .Quest, .Repeat:
+		// Handle quantifiers
+		if ast.data != nil {
+			repeat_data := (^Repeat_Data)(ast.data)
+			matched, start, end := match_repeat(repeat_data, text, anchor_start)
+			return matched, start, end
+		}
 	case:
 		// For User Story 2, handle basic types
 		// Other types will be implemented later
