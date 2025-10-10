@@ -197,7 +197,8 @@ Literal_Data :: struct {
 
 // Data for character class
 CharClass_Data :: struct {
-	ranges: []Char_Range,
+	ranges: [32]Char_Range,  // Fixed size for simplicity
+	count:  int,
 	negated: bool,
 }
 
@@ -287,8 +288,8 @@ parse_regexp_internal :: proc(pattern: string, flags: Parse_Flags) -> (^Regexp, 
 		return node, .NoError
 	}
 	
-	// For User Story 1, only handle literals
-	node := parse_literal(&parser)
+	// For User Story 2, handle literals and character classes
+	node := parse_alternation(&parser)
 	if node == nil {
 		return nil, .ParseError
 	}
@@ -316,8 +317,8 @@ parse_literal :: proc(p: ^Parser) -> ^Regexp {
 	for !at_end(p) {
 		ch := peek(p)
 		
-		// For User Story 1, stop at any special regex character
-		if is_special_char(ch) {
+		// Stop at any special regex character (except escape)
+		if is_special_char(ch) && ch != '\\' {
 			break
 		}
 		
@@ -329,7 +330,7 @@ parse_literal :: proc(p: ^Parser) -> ^Regexp {
 			}
 			
 			escaped := advance(p)
-			// For now, only handle simple escapes
+			// Handle simple escapes
 			switch escaped {
 			case 'n':
 				append(&literal_bytes, '\n')
@@ -339,8 +340,11 @@ parse_literal :: proc(p: ^Parser) -> ^Regexp {
 				append(&literal_bytes, '\r')
 			case '\\':
 				append(&literal_bytes, '\\')
+			case '.', '|', '(', ')', '[', ']', '{', '}', '^', '$', '*', '+', '?':
+				// Escape special character
+				append(&literal_bytes, byte(escaped))
 			case:
-				// For User Story 1, treat unknown escapes as literal
+				// Unknown escape, treat as literal
 				append(&literal_bytes, byte(escaped))
 			}
 		} else {
@@ -362,6 +366,238 @@ parse_literal :: proc(p: ^Parser) -> ^Regexp {
 	node.data = data
 	
 	return node
+}
+
+// Parse alternation (highest precedence)
+parse_alternation :: proc(p: ^Parser) -> ^Regexp {
+	// Parse first term
+	left := parse_concat(p)
+	if left == nil {
+		return nil
+	}
+	
+	// Check for alternation
+	if !at_end(p) && peek(p) == '|' {
+		advance(p) // Skip '|'
+		
+		// Parse right side
+		right := parse_alternation(p)
+		if right == nil {
+			return nil
+		}
+		
+		// Create alternation node
+		node := alloc_regexp(p, .Alternate)
+		data := (^Concat_Data)(arena_alloc(p.arena, size_of(Concat_Data)))
+		data.subs = make([]^Regexp, 2)
+		data.subs[0] = left
+		data.subs[1] = right
+		node.data = data
+		
+		return node
+	}
+	
+	return left
+}
+
+// Parse concatenation
+parse_concat :: proc(p: ^Parser) -> ^Regexp {
+	terms: [dynamic]^Regexp
+	
+	// Parse first term
+	first := parse_term(p)
+	if first == nil {
+		return nil
+	}
+	append(&terms, first)
+	
+	// Parse additional terms
+	for !at_end(p) {
+		ch := peek(p)
+		if ch == '|' || ch == ')' {
+			break // End of this concatenation
+		}
+		
+		term := parse_term(p)
+		if term == nil {
+			break
+		}
+		append(&terms, term)
+	}
+	
+	// If only one term, return it directly
+	if len(terms) == 1 {
+		return terms[0]
+	}
+	
+	// Create concatenation node
+	node := alloc_regexp(p, .Concat)
+	data := (^Concat_Data)(arena_alloc(p.arena, size_of(Concat_Data)))
+	data.subs = terms[:]
+	node.data = data
+	
+	return node
+}
+
+// Parse term (literal, character class, or grouped expression)
+parse_term :: proc(p: ^Parser) -> ^Regexp {
+	if at_end(p) {
+		return nil
+	}
+	
+	ch := peek(p)
+	
+	// Handle character classes
+	if ch == '[' {
+		return parse_character_class(p)
+	}
+	
+	// Handle grouped expressions
+	if ch == '(' {
+		return parse_group(p)
+	}
+	
+	// Handle special characters
+	if ch == '.' {
+		advance(p) // Skip '.'
+		node := alloc_regexp(p, .AnyChar)
+		return node
+	}
+	
+	if ch == '^' {
+		advance(p) // Skip '^'
+		node := alloc_regexp(p, .BeginLine)
+		return node
+	}
+	
+	if ch == '$' {
+		advance(p) // Skip '$'
+		node := alloc_regexp(p, .EndLine)
+		return node
+	}
+	
+	// Handle literals
+	return parse_literal(p)
+}
+
+// Parse character class [abc] or [^abc]
+parse_character_class :: proc(p: ^Parser) -> ^Regexp {
+	if at_end(p) || peek(p) != '[' {
+		return nil
+	}
+	
+	advance(p) // Skip '['
+	
+	// Check for negation
+	negated := false
+	if !at_end(p) && peek(p) == '^' {
+		advance(p) // Skip '^'
+		negated = true
+	}
+	
+// Parse character ranges using a temporary dynamic array
+	temp_ranges: [dynamic]Char_Range
+	
+	for !at_end(p) {
+		ch := advance(p)
+		
+		if ch == ']' {
+			break // End of character class
+		}
+		
+		// Handle escape sequences
+		if ch == '\\' {
+			if at_end(p) {
+				return nil // Trailing backslash
+			}
+			ch = advance(p)
+			// Handle escaped characters
+			switch ch {
+			case 'n': ch = '\n'
+			case 't': ch = '\t'
+			case 'r': ch = '\r'
+			case '\\': ch = '\\'
+			case '-': ch = '-'
+			case ']': ch = ']'
+			}
+		}
+		
+		// Check for range [a-z]
+		if !at_end(p) && peek(p) == '-' {
+			advance(p) // Skip '-'
+			if at_end(p) {
+				return nil // Incomplete range
+			}
+			
+			end_ch := advance(p)
+			if end_ch == ']' {
+				// Treat as literal '-'
+				append(&temp_ranges, Char_Range{ch, ch})
+				append(&temp_ranges, Char_Range{'-', '-'})
+				break
+			}
+			
+			// Handle escape in range end
+			if end_ch == '\\' {
+				if at_end(p) {
+					return nil
+				}
+				end_ch = advance(p)
+				switch end_ch {
+				case 'n': end_ch = '\n'
+				case 't': end_ch = '\t'
+				case 'r': end_ch = '\r'
+				case '\\': end_ch = '\\'
+				}
+			}
+			
+			// Add range
+			if ch <= end_ch {
+				append(&temp_ranges, Char_Range{ch, end_ch})
+			}
+		} else {
+			// Single character
+			append(&temp_ranges, Char_Range{ch, ch})
+		}
+	}
+	
+	// Create character class node
+	node := alloc_regexp(p, .CharClass)
+	data := (^CharClass_Data)(arena_alloc(p.arena, size_of(CharClass_Data)))
+	
+	// Copy ranges to fixed-size array
+	data.count = min(len(temp_ranges), 32)
+	for i in 0..<data.count {
+		data.ranges[i] = temp_ranges[i]
+	}
+	data.negated = negated
+	node.data = data
+	
+	return node
+}
+
+// Parse grouped expression (...)
+parse_group :: proc(p: ^Parser) -> ^Regexp {
+	if at_end(p) || peek(p) != '(' {
+		return nil
+	}
+	
+	advance(p) // Skip '('
+	
+	// Parse alternation inside group
+	sub := parse_alternation(p)
+	if sub == nil {
+		return nil
+	}
+	
+	// Expect closing ')'
+	if at_end(p) || peek(p) != ')' {
+		return nil
+	}
+	advance(p) // Skip ')'
+	
+	// For now, treat as non-capturing group
+	return sub
 }
 
 // Check if character is special regex character
@@ -399,11 +635,41 @@ clone_regexp :: proc(arena: ^Arena, src: ^Regexp) -> ^Regexp {
 			dst.data = dst_data
 		}
 		
+	case .CharClass:
+		if src.data != nil {
+			src_data := (^CharClass_Data)(src.data)
+			dst_data := (^CharClass_Data)(arena_alloc(arena, size_of(CharClass_Data)))
+			
+			// Copy character class data
+			dst_data.count = src_data.count
+			dst_data.negated = src_data.negated
+			for i in 0..<src_data.count {
+				dst_data.ranges[i] = src_data.ranges[i]
+			}
+			dst.data = dst_data
+		}
+		
+	case .Concat, .Alternate:
+		if src.data != nil {
+			src_data := (^Concat_Data)(src.data)
+			dst_data := (^Concat_Data)(arena_alloc(arena, size_of(Concat_Data)))
+			
+			// Copy sub-expressions
+			dst_data.subs = make([]^Regexp, len(src_data.subs))
+			for i in 0..<len(src_data.subs) {
+				dst_data.subs[i] = clone_regexp(arena, src_data.subs[i])
+			}
+			dst.data = dst_data
+		}
+		
+	case .AnyChar, .AnyCharNotNL, .BeginLine, .EndLine:
+		// No data to clone
+		
 	case .NoOp:
 		// No data to clone
 		
 	case:
-		// For User Story 1, only handle Literal and NoOp
+		// For User Story 2, handle basic types
 		// Other types will be implemented later
 	}
 	
@@ -484,7 +750,7 @@ match :: proc(pattern: ^Regexp_Pattern, text: string) -> (Match_Result, ErrorCod
 		return result, .InternalError
 	}
 	
-	// Use simple literal matching for now (NFA integration needs more work)
+	// Use simple literal matching for now (NFA needs more debugging)
 	matched, start, end := match_literal_simple(pattern.ast, text)
 	
 	result.matched = matched
@@ -498,34 +764,34 @@ match :: proc(pattern: ^Regexp_Pattern, text: string) -> (Match_Result, ErrorCod
 	return result, .NoError
 }
 
-// NFA-based matching implementation
-match_with_nfa :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
-	// Create NFA program from AST
-	prog := new_prog(64)
-	defer free_prog(prog)
-	
-	// Compile AST to NFA
-	compile_err := compile_to_nfa(ast, prog)
-	if compile_err != .NoError {
-		return false, -1, -1
-	}
-	
-	// Create matcher
-	matcher := new_matcher(prog, false, true) // Not anchored, longest match
-	defer free_matcher(matcher)
-	
-	// Execute NFA
-	matched, caps := match_nfa(matcher, text)
-	
-	if matched && len(caps) >= 2 {
-		return true, caps[0], caps[1]
-	}
-	
-	return false, -1, -1
-}
+// NFA-based matching implementation (temporarily disabled)
+// match_with_nfa :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+// 	// Create NFA program from AST
+// 	prog := new_prog(64)
+// 	defer free_prog(prog)
+// 	
+// 	// Compile AST to NFA
+// 	compile_err := compile_to_nfa(ast, prog)
+// 	if compile_err != .NoError {
+// 		return false, -1, -1
+// 	}
+// 	
+// 	// Create matcher
+// 	matcher := new_matcher(prog, false, true) // Not anchored, longest match
+// 	defer free_matcher(matcher)
+// 	
+// 	// Execute NFA
+// 	matched, caps := match_nfa(matcher, text)
+// 	
+// 	if matched && len(caps) >= 2 {
+// 		return true, caps[0], caps[1]
+// 	}
+// 	
+// 	return false, -1, -1
+// }
 
 // Simple literal matching implementation
-match_literal_simple :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
+match_literal_simple :: proc(ast: ^Regexp, text: string, anchor_start: bool = false) -> (bool, int, int) {
 	if ast == nil {
 		return false, -1, -1
 	}
@@ -536,22 +802,73 @@ match_literal_simple :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
 			lit_data := (^Literal_Data)(ast.data)
 			lit_str := string(lit_data.value)
 			
-			// Find literal in text
-			for i in 0..<len(text) {
-				if i + len(lit_str) <= len(text) {
+			if anchor_start {
+				// Match only at beginning
+				if len(lit_str) <= len(text) {
 					match := true
 					for j in 0..<len(lit_str) {
-						if text[i + j] != lit_str[j] {
+						if text[j] != lit_str[j] {
 							match = false
 							break
 						}
 					}
 					if match {
-						return true, i, i + len(lit_str)
+						return true, 0, len(lit_str)
+					}
+				}
+			} else {
+				// Find literal anywhere in text
+				for i in 0..<len(text) {
+					if i + len(lit_str) <= len(text) {
+						match := true
+						for j in 0..<len(lit_str) {
+							if text[i + j] != lit_str[j] {
+								match = false
+								break
+							}
+						}
+						if match {
+							return true, i, i + len(lit_str)
+						}
 					}
 				}
 			}
 		}
+		
+	case .CharClass:
+		if ast.data != nil {
+			char_data := (^CharClass_Data)(ast.data)
+			
+			// Find first character matching the class
+			for i in 0..<len(text) {
+				r := rune(text[i])
+				if matches_char_class(char_data, r) {
+					return true, i, i + 1
+				}
+			}
+		}
+		
+	case .AnyChar:
+		// Any character matches
+		if len(text) > 0 {
+			return true, 0, 1
+		}
+		
+	case .AnyCharNotNL:
+		// Any character except newline
+		if len(text) > 0 && text[0] != '\n' {
+			return true, 0, 1
+		}
+		
+	case .BeginLine:
+		// Match at beginning of string only
+		// For simple matching, we only match at position 0
+		return true, 0, 0
+		
+	case .EndLine:
+		// Match at end of string only  
+		// For simple matching, we only match at the end
+		return true, len(text), len(text)
 		
 	case .Concat:
 		if ast.data != nil {
@@ -561,9 +878,19 @@ match_literal_simple :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
 				return true, 0, 0
 			}
 			
-			// For now, only handle single literal in concatenation
-			if len(concat_data.subs) == 1 {
-				return match_literal_simple(concat_data.subs[0], text)
+			// Handle concatenation by matching each part sequentially
+			return match_concatenation(concat_data.subs, text, 0)
+		}
+		
+	case .Alternate:
+		if ast.data != nil {
+			concat_data := (^Concat_Data)(ast.data)
+			// Try each alternative
+			for sub in concat_data.subs {
+				matched, start, end := match_literal_simple(sub, text)
+				if matched {
+					return true, start, end
+				}
 			}
 		}
 		
@@ -572,11 +899,120 @@ match_literal_simple :: proc(ast: ^Regexp, text: string) -> (bool, int, int) {
 		return true, 0, 0
 		
 	case:
-		// For User Story 1, only handle Literal, Concat, and NoOp
+		// For User Story 2, handle basic types
 		// Other types will be implemented later
 	}
 	
 	return false, -1, -1
+}
+
+// Check if character matches character class
+matches_char_class :: proc(char_data: ^CharClass_Data, r: rune) -> bool {
+	if char_data == nil {
+		return false
+	}
+	
+	if char_data.count == 0 {
+		return char_data.negated
+	}
+	
+	for i in 0..<char_data.count {
+		range := char_data.ranges[i]
+		if range.lo <= r && r <= range.hi {
+			// Character found in range
+			return !char_data.negated  // true for normal, false for negated
+		}
+	}
+	
+	// Character not found in any range
+	return char_data.negated  // false for normal, true for negated
+}
+
+// Match concatenation of multiple patterns
+match_concatenation :: proc(subs: []^Regexp, text: string, start_pos: int) -> (bool, int, int) {
+	if len(subs) == 0 {
+		return true, start_pos, start_pos
+	}
+	
+	if len(subs) == 1 {
+		matched, match_start, match_end := match_literal_simple(subs[0], text[start_pos:], true)
+		if matched {
+			return true, start_pos + match_start, start_pos + match_end
+		}
+		return false, -1, -1
+	}
+	
+	// Handle first component specially based on its type
+	first := subs[0]
+	
+	if first.op == .BeginLine {
+		// BeginLine must match at position 0
+		if start_pos != 0 {
+			return false, -1, -1
+		}
+		
+	// Match remaining parts at position 0
+	remaining_matched, _, remaining_end := match_concatenation(subs[1:], text, 0)
+	if remaining_matched {
+		return true, 0, remaining_end
+	}
+	return false, -1, -1
+	}
+	
+	if first.op == .EndLine {
+		// EndLine must match at end of text - but it's usually the LAST component
+		// For patterns like "a$", the EndLine comes last
+		if len(subs) == 1 {
+			// Just EndLine alone
+			return start_pos == len(text), start_pos, start_pos
+		}
+		
+		// If EndLine is not last, match remaining parts first, then check EndLine
+		remaining_matched, remaining_start, remaining_end := match_concatenation(subs[1:], text, start_pos)
+		if remaining_matched && remaining_end == len(text) {
+			return true, remaining_start, len(text)
+		}
+		return false, -1, -1
+	}
+	
+	// For other types, try all possible matches
+	if first.op == .Literal && len(subs) > 1 && subs[1].op == .EndLine {
+		// Special case for "a$" - try to find 'a' at the end
+		if first.data != nil {
+			lit_data := (^Literal_Data)(first.data)
+			lit_str := string(lit_data.value)
+			
+			// Look for literal at the end of text
+			if len(lit_str) <= len(text) {
+				pos := len(text) - len(lit_str)
+				match := true
+				for j in 0..<len(lit_str) {
+					if text[pos + j] != lit_str[j] {
+						match = false
+						break
+					}
+				}
+				if match {
+					return true, pos, len(text)
+				}
+			}
+		}
+		return false, -1, -1
+	}
+	
+	// Normal matching for other cases
+	matched, match_start, match_end := match_literal_simple(first, text[start_pos:], true)
+	if !matched {
+		return false, -1, -1
+	}
+	
+	// Match remaining parts normally
+	remaining_matched, remaining_start, remaining_end := match_concatenation(subs[1:], text, start_pos + match_end)
+	if !remaining_matched {
+		return false, -1, -1
+	}
+	
+	return true, start_pos + match_start, remaining_start + remaining_end
 }
 
 // Convenience function for one-shot matching
