@@ -90,14 +90,6 @@
 - **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
 - **FR-005**: System MUST [behavior, e.g., "log all security events"]
 
-### RE2-Specific Requirements *(if regex feature)*
-
-- **FR-RE2-001**: Implementation MUST preserve RE2's linear-time complexity guarantee
-- **FR-RE2-002**: AST structures MUST match RE2 exactly (no deviations)
-- **FR-RE2-003**: Memory usage MUST be bounded with configurable DFA state cache
-- **FR-RE2-004**: Full Unicode UTF-8 support MUST match RE2 behavior
-- **FR-RE2-005**: No exponential backtracking patterns permitted
-
 *Example of marking unclear requirements:*
 
 - **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]

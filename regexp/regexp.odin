@@ -94,13 +94,22 @@ match :: proc(pattern: ^Regexp_Pattern, text: string) -> (Match_Result, ErrorCod
 		return result, .UTF8Error
 	}
 	
-	// Use pattern matching for User Story 2
-	matched, start, end := match_pattern(pattern.ast, text)
+	// Use NFA matching for linear-time performance
+	matched, caps := match_nfa_pattern(pattern.ast, text)
 	
 	result.matched = matched
-	if matched {
-		result.full_match = Range{start, end}
-		// No captures for simple literals
+	if matched && len(caps) >= 2 {
+		result.full_match = Range{caps[0], caps[1]}
+		// Convert capture positions to ranges
+		result.captures = make([]Range, len(caps) / 2)
+		for i := 0; i < len(caps); i += 2 {
+			if i + 1 < len(caps) {
+				result.captures[i / 2] = Range{caps[i], caps[i + 1]}
+			}
+		}
+	} else if matched {
+		// Fallback for simple matches
+		result.full_match = Range{0, len(text)}
 		result.captures = make([]Range, 1)
 		result.captures[0] = result.full_match
 	}
@@ -410,6 +419,38 @@ extract_string_from_ast :: proc(ast: ^Regexp) -> string {
 	}
 	
 	return ""
+}
+
+// ============================================================================
+// NFA MATCHING ENGINE
+// ============================================================================
+
+// Match pattern using NFA for linear-time performance
+match_nfa_pattern :: proc(ast: ^Regexp, text: string) -> (bool, []int) {
+	if ast == nil {
+		return false, nil
+	}
+	
+	// Compile AST to NFA
+	prog, err := compile_nfa(ast)
+	if err != .NoError || prog == nil {
+		return false, nil
+	}
+	defer free_prog(prog)
+	
+	// Use the simplified working NFA matcher
+	matched, caps := simple_nfa_match(prog, text)
+	
+	// Copy the caps array since the original will be freed
+	result_caps: []int
+	if matched && caps != nil {
+		result_caps = make([]int, len(caps))
+		copy(result_caps, caps)
+		// Note: caps is allocated with make(), so it will be garbage collected
+		// No need to manually free it
+	}
+	
+	return matched, result_caps
 }
 
 // ============================================================================

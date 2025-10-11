@@ -1,8 +1,8 @@
-package tests
+package main
 
 import "core:testing"
 import "core:fmt"
-import "../regexp"
+import "regexp"
 
 // Test RE2 compliance for literal patterns
 // This ensures our implementation matches RE2 behavior exactly

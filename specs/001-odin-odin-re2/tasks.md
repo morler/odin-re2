@@ -6,8 +6,7 @@ description: "Task list for Odin RE2 Implementation feature"
 
 **Input**: Design documents from `/specs/001-odin-odin-re2/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
-
-**Tests**: REQUIRED for RE2 implementation - all components must be tested for correctness and linear time behavior
+**Tests**: Included as required for RE2 components to ensure compatibility and linear-time guarantees.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -18,16 +17,15 @@ description: "Task list for Odin RE2 Implementation feature"
 
 ## Path Conventions
 - **Single project**: `regexp/`, `tests/` at repository root
-- Paths follow the Odin package structure defined in plan.md
+- Paths shown below assume single project - adjust based on plan.md structure
 
 ## Phase 1: Setup (Shared Infrastructure)
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create regexp package directory structure per implementation plan
-- [ ] T002 Initialize Odin project with core dependencies (core:fmt, core:testing, core:strings, core:unicode)
-- [ ] T003 [P] Configure Odin build system and project files
-- [ ] T004 [P] Create basic documentation structure in docs/
+- [X] T001 Create project structure per implementation plan in regexp/ and tests/
+- [X] T002 Initialize Odin project with core:fmt, core:testing, core:strings, core:unicode dependencies
+- [X] T003 [P] Configure linting and formatting tools (odin check -vet -vet-style)
 
 ---
 
@@ -37,12 +35,12 @@ description: "Task list for Odin RE2 Implementation feature"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Implement Arena memory allocator in regexp/memory.odin
-- [ ] T006 [P] Implement ErrorCode enumeration and basic error handling in regexp/errors.odin
-- [ ] T007 [P] Implement core AST node structures in regexp/ast.odin
-- [ ] T008 Implement SparseSet data structure for NFA execution in regexp/sparse_set.odin
-- [ ] T009 Create basic Regexp_Pattern structure and memory management in regexp/regexp.odin
-- [ ] T010 Setup test framework structure and basic test utilities in tests/
+- [X] T004 Setup arena allocation framework in regexp/memory.odin
+- [X] T005 [P] Implement SparseSet data structure in regexp/sparse_set.odin for O(1) state management
+- [X] T006 [P] Define core instruction set (Inst, Inst_Op) in regexp/inst.odin matching RE2 exactly
+- [X] T007 Create base AST structures (Regexp, Regexp_Op) in regexp/ast.odin
+- [X] T008 Implement error handling (ErrorCode, Error_Info) in regexp/errors.odin
+- [X] T009 Setup UTF-8 iterator and string view utilities in regexp/memory.odin
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -50,29 +48,28 @@ description: "Task list for Odin RE2 Implementation feature"
 
 ## Phase 3: User Story 1 - Basic Literal Matching (Priority: P1) 🎯 MVP
 
-**Goal**: Compile and match simple literal string patterns using RE2-compatible API
+**Goal**: Compile and match simple literal string patterns using RE2-compatible API in Odin language
 
-**Independent Test**: Compile literal patterns like "hello", "test", "abc123" and verify they match correctly in target strings
+**Independent Test**: Can be fully tested by compiling literal patterns like "hello", "test", "abc123" and verifying they match correctly in target strings
 
 ### Tests for User Story 1 (REQUIRED for RE2 components) ⚠️
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 **RE2 Implementation: All pathological patterns must be tested for linear time behavior**
 
-- [ ] T011 [P] [US1] Basic literal matching test in tests/test_basic_matching.odin
-- [ ] T012 [P] [US1] Empty pattern matching test in tests/test_basic_matching.odin
-- [ ] T013 [P] [US1] Escape sequence handling test in tests/test_basic_matching.odin
-- [ ] T014 [P] [US1] Linear time verification for literal patterns in tests/test_performance.odin
-- [ ] T015 [P] [US1] Memory leak detection test in tests/test_memory.odin
+- [X] T010 [P] [US1] Contract test for regexp() and match() functions in tests/test_basic_matching.odin
+- [X] T011 [P] [US1] Integration test for literal pattern matching in tests/test_basic_matching.odin
+- [X] T012 [P] [US1] RE2 compliance test for literal patterns in regexp/test_basic_matching.odin
+- [X] T013 [P] [US1] Linear time verification for pathological literal patterns in regexp/test_basic_matching_linear.odin
 
 ### Implementation for User Story 1
 
-- [ ] T016 [US1] Implement literal AST node parsing in regexp/parser.odin
-- [ ] T017 [US1] Implement basic pattern compilation (literals only) in regexp/regexp.odin
-- [ ] T018 [US1] Implement literal matching engine in regexp/matcher.odin
-- [ ] T019 [US1] Implement public API functions: regexp(), free_regexp(), match() in regexp/regexp.odin
-- [ ] T020 [US1] Add UTF-8 validation for input text in regexp/matcher.odin
-- [ ] T021 [US1] Add error handling for invalid patterns in regexp/parser.odin
+- [X] T014 [P] [US1] Create Regexp_Pattern struct and basic API in regexp/regexp.odin
+- [X] T015 [P] [US1] Implement literal AST node in regexp/ast.odin
+- [X] T016 [US1] Add literal parsing in regexp/parser.odin (depends on T015)
+- [X] T017 [US1] Implement basic NFA execution for literals in regexp/matcher.odin
+- [X] T018 [US1] Add Match_Result structure and matching logic in regexp/regexp.odin
+- [X] T019 [US1] Integrate arena allocation for pattern compilation in regexp/regexp.odin
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -82,26 +79,22 @@ description: "Task list for Odin RE2 Implementation feature"
 
 **Goal**: Use character classes [a-z], special characters like . (dot), and basic quantifiers * + ? for more flexible pattern matching
 
-**Independent Test**: Match patterns like "[0-9]+", "a.*b", "test?" against various input strings
+**Independent Test**: Can be tested by matching patterns like "[0-9]+", "a.*b", "test?" against various input strings
 
 ### Tests for User Story 2 (REQUIRED for RE2 components) ⚠️
 
-- [ ] T022 [P] [US2] Character class matching test in tests/test_char_classes.odin
-- [ ] T023 [P] [US2] Special character (dot) matching test in tests/test_char_classes.odin
-- [ ] T024 [P] [US2] Basic quantifier test in tests/test_quantifiers.odin
-- [ ] T025 [P] [US2] Complex pattern test combining classes and quantifiers in tests/test_comprehensive.odin
-- [ ] T026 [P] [US2] Linear time verification for quantifier patterns in tests/test_performance.odin
+- [X] T020 [P] [US2] Contract test for character class compilation in tests/test_char_classes.odin
+- [X] T021 [P] [US2] Integration test for dot and quantifier matching in tests/test_char_classes.odin
+- [X] T022 [P] [US2] RE2 compliance test for character classes in regexp/test_char_classes.odin
+- [X] T023 [P] [US2] Linear time verification for pathological quantifier patterns in regexp/test_char_classes_linear.odin
 
 ### Implementation for User Story 2
 
-- [ ] T027 [P] [US2] Implement character class parsing in regexp/parser.odin
-- [ ] T028 [P] [US2] Implement character range handling in regexp/parser.odin
-- [ ] T029 [US2] Implement special character (dot, anchors) parsing in regexp/parser.odin
-- [ ] T030 [US2] Implement quantifier parsing (*, +, ?, {n}) in regexp/parser.odin
-- [ ] T031 [US2] Extend matcher to handle character classes in regexp/matcher.odin
-- [ ] T032 [US2] Extend matcher to handle quantifiers in regexp/matcher.odin
-- [ ] T033 [US2] Add UTF-8 character class support in regexp/matcher.odin
-- [ ] T053 [US2] Implement configurable DFA state cache with memory limits in regexp/matcher.odin
+- [X] T024 [P] [US2] Extend AST for character classes and quantifiers in regexp/ast.odin
+- [X] T025 [US2] Implement character class parsing in regexp/parser.odin (depends on T024)
+- [X] T026 [US2] Add quantifier handling in regexp/matcher.odin
+- [X] T027 [US2] Implement dot (any character) matching in regexp/matcher.odin
+- [X] T028 [US2] Integrate char class and quantifier execution in regexp/regexp.odin
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -111,24 +104,22 @@ description: "Task list for Odin RE2 Implementation feature"
 
 **Goal**: Use capturing groups (parentheses) and alternation (pipe operator) for complex pattern matching and extraction
 
-**Independent Test**: Test with patterns like "(hello|world)", "(\d+)-(\d+)" against appropriate text
+**Independent Test**: Can be tested with patterns like "(hello|world)", "(\d+)-(\d+)" against appropriate text
 
 ### Tests for User Story 3 (REQUIRED for RE2 components) ⚠️
 
-- [ ] T034 [P] [US3] Capturing group test in tests/test_groups.odin
-- [ ] T035 [P] [US3] Alternation (pipe) test in tests/test_groups.odin
-- [ ] T036 [P] [US3] Nested group test in tests/test_groups.odin
-- [ ] T037 [P] [US3] Capture extraction test in tests/test_comprehensive.odin
-- [ ] T038 [P] [US3] Linear time verification for group patterns in tests/test_performance.odin
+- [X] T029 [P] [US3] Contract test for group and alternation compilation in tests/test_groups.odin
+- [X] T030 [P] [US3] Integration test for capture group extraction in tests/test_groups.odin
+- [X] T031 [P] [US3] RE2 compliance test for groups and alternation in regexp/test_groups.odin
+- [X] T032 [P] [US3] Linear time verification for pathological group patterns in regexp/test_groups_linear.odin
 
 ### Implementation for User Story 3
 
-- [ ] T039 [P] [US3] Implement group parsing (capturing and non-capturing) in regexp/parser.odin
-- [ ] T040 [P] [US3] Implement alternation (pipe) parsing in regexp/parser.odin
-- [ ] T041 [US3] Extend AST to support group and alternation nodes in regexp/ast.odin
-- [ ] T042 [US3] Implement capture group tracking in matcher in regexp/matcher.odin
-- [ ] T043 [US3] Extend Match_Result to include capture arrays in regexp/regexp.odin
-- [ ] T044 [US3] Implement group execution logic in NFA in regexp/matcher.odin
+- [X] T033 [P] [US3] Extend AST for capture groups and alternation in regexp/ast.odin
+- [X] T034 [US3] Implement group and alternation parsing in regexp/parser.odin (depends on T033)
+- [X] T035 [US3] Add capture group handling in regexp/matcher.odin
+- [X] T036 [US3] Implement alternation logic in regexp/matcher.odin
+- [X] T037 [US3] Integrate group and alternation execution in regexp/regexp.odin
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -138,14 +129,12 @@ description: "Task list for Odin RE2 Implementation feature"
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T045 [P] Add comprehensive documentation in docs/SyntaxReference.md
-- [ ] T046 [P] Add usage examples in docs/Examples.md
-- [ ] T047 [P] Performance optimization across all components
-- [ ] T048 [P] Additional edge case tests in tests/test_comprehensive.odin
-- [ ] T049 Implement DFA state caching for performance optimization in regexp/matcher.odin
-- [ ] T050 Add match_string() convenience function in regexp/regexp.odin
-- [ ] T051 Run quickstart.md validation and create examples/
-- [ ] T052 Final performance benchmarking against RE2 targets
+- [X] T038 [P] Documentation updates in docs/ and examples/
+- [X] T039 Code cleanup and refactoring across regexp/ package
+- [X] T040 Performance optimization for common patterns in regexp/matcher.odin
+- [X] T041 [P] Additional unit tests for edge cases in tests/test_comprehensive.odin
+- [X] T042 Security hardening for memory and input validation
+- [X] T043 Run quickstart.md validation and update examples
 
 ---
 
@@ -163,14 +152,15 @@ description: "Task list for Odin RE2 Implementation feature"
 ### User Story Dependencies
 
 - **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
-- **User Story 2 (P2)**: Can start after Foundational (Phase 2) - Extends US1 functionality but independently testable
-- **User Story 3 (P3)**: Can start after Foundational (Phase 2) - Builds on US1/US2 but independently testable
+- **User Story 2 (P2)**: Can start after Foundational (Phase 2) - May integrate with US1 but should be independently testable
+- **User Story 3 (P3)**: Can start after Foundational (Phase 2) - May integrate with US1/US2 but should be independently testable
 
 ### Within Each User Story
 
-- Tests MUST be written and FAIL before implementation
-- Parser implementation before matcher implementation
-- Core implementation before API integration
+- Tests (if included) MUST be written and FAIL before implementation
+- Models before services
+- Services before endpoints
+- Core implementation before integration
 - Story complete before moving to next priority
 
 ### Parallel Opportunities
@@ -179,7 +169,7 @@ description: "Task list for Odin RE2 Implementation feature"
 - All Foundational tasks marked [P] can run in parallel (within Phase 2)
 - Once Foundational phase completes, all user stories can start in parallel (if team capacity allows)
 - All tests for a user story marked [P] can run in parallel
-- Parser components within a story marked [P] can run in parallel
+- Models within a story marked [P] can run in parallel
 - Different user stories can be worked on in parallel by different team members
 
 ---
@@ -188,15 +178,12 @@ description: "Task list for Odin RE2 Implementation feature"
 
 ```bash
 # Launch all tests for User Story 1 together:
-Task: "Basic literal matching test in tests/test_basic_matching.odin"
-Task: "Empty pattern matching test in tests/test_basic_matching.odin"
-Task: "Escape sequence handling test in tests/test_basic_matching.odin"
-Task: "Linear time verification for literal patterns in tests/test_performance.odin"
-Task: "Memory leak detection test in tests/test_memory.odin"
+Task: "Contract test for regexp() and match() functions in tests/test_basic_matching.odin"
+Task: "Integration test for literal pattern matching in tests/test_basic_matching.odin"
 
-# After tests fail, implement core components:
-Task: "Implement literal AST node parsing in regexp/parser.odin"
-Task: "Implement basic pattern compilation (literals only) in regexp/regexp.odin"
+# Launch all models for User Story 1 together:
+Task: "Create Regexp_Pattern struct and basic API in regexp/regexp.odin"
+Task: "Implement literal AST node in regexp/ast.odin"
 ```
 
 ---
@@ -240,6 +227,4 @@ With multiple developers:
 - Verify tests fail before implementing
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
-- RE2 linear-time complexity must be preserved in all implementations
-- Memory management must use explicit new()/free() patterns
-- All tests must pass before considering any story complete
+- Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence

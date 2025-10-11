@@ -1,8 +1,8 @@
-package tests
+package main
 
 import "core:testing"
 import "core:fmt"
-import "../regexp"
+import "regexp"
 
 // Test basic literal pattern compilation
 // This test should FAIL initially, then pass after parser implementation

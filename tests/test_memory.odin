@@ -1,8 +1,8 @@
-package tests
+package main
 
 import "core:testing"
 import "core:fmt"
-import "../regexp"
+import "regexp"
 
 // Test memory leak detection for basic patterns
 // CRITICAL: All patterns must be properly freed

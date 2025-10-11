@@ -1,79 +1,62 @@
 <!--
 Sync Impact Report:
-- Version change: None → 1.0.0 (initial constitution)
-- Modified principles: None (initial creation)
-- Added sections: Core Principles (5), Technical Constraints, Development Workflow, Governance
-- Removed sections: None
+- Version change: 1.0.0 (new constitution)
+- Modified principles: N/A (new constitution)
+- Added sections: Core Principles (5 principles), Performance Requirements, Development Workflow
+- Removed sections: N/A (new constitution)
 - Templates requiring updates: 
-  ✅ .specify/templates/plan-template.md (Constitution Check section updated)
-  ✅ .specify/templates/spec-template.md (RE2-Specific Requirements added)
-  ✅ .specify/templates/tasks-template.md (RE2 testing requirements added)
+  ✅ plan-template.md (Constitution Check section)
+  ✅ spec-template.md (aligned with test-first principle)
+  ✅ tasks-template.md (organized by user stories per independence principle)
 - Follow-up TODOs: None
 -->
 
-# Odin RE2 Constitution
+# Odin RE2 Implementation Constitution
 
 ## Core Principles
 
-### I. Algorithm Fidelity
-RE2 algorithm implementation must be exact, preserving all data structures, state machines, and linear-time complexity guarantees. No deviations from RE2's core design are permitted, even for optimization opportunities. The complexity of RE2 is necessary for its performance guarantees.
+### I. RE2 Compatibility (NON-NEGOTIABLE)
+All regex functionality MUST be fully compatible with Google's RE2 library. Every feature, edge case, and behavior MUST match RE2 specifications exactly. Any deviation from RE2 behavior requires explicit justification and MUST be documented as a conscious design decision with compatibility impact analysis.
 
-### II. Linear-Time Complexity Guarantee
-All regex patterns must execute in O(n) time where n is input length. No exponential backtracking is permissible. DFA state cache must be memory-bounded and configurable. This guarantee is non-negotiable and must be preserved in all optimizations.
+### II. Linear-Time Performance Guarantee (NON-NEGOTIABLE)
+All regex matching operations MUST guarantee O(n) time complexity where n is the input text length. No regex pattern may cause exponential or super-linear behavior. All implementations MUST use NFA-based matching with deterministic state management. Performance testing MUST verify linear behavior for pathological patterns.
 
-### III. Memory Safety & Odin Idioms
-Use Odin's explicit memory management with new()/free() patterns. Implement arena allocation for regexp nodes. All memory must be explicitly cleaned up using free_regexp() in test procedures. No garbage collection dependencies for core algorithm components.
+### III. Test-First Development (NON-NEGOTIABLE)
+TDD is mandatory: Tests MUST be written and verified to FAIL before implementation. Red-Green-Refactor cycle is strictly enforced. Every component MUST have corresponding tests including unit tests, integration tests, and RE2 compliance tests. Linear time performance tests are required for all new regex features.
 
-### IV. Test-Driven Implementation
-TDD is mandatory: Write tests first, ensure they fail, then implement. Port complete RE2 test suite without modification. All pathological patterns that cause exponential behavior in other engines must be tested and verified to remain linear.
+### IV. Memory Safety and Arena Allocation
+All memory allocations MUST use arena allocation for predictable performance and automatic cleanup. Memory leaks are strictly forbidden. All code MUST be buffer-safe with explicit bounds checking. Arena scope MUST be clearly defined and documented for each API function.
 
-### V. Unicode & UTF-8 Compliance
-Full Unicode UTF-8 support throughout the implementation. Character classes, string handling, and all text processing must be UTF-8 aware. Invalid UTF-8 handling must match RE2 behavior exactly.
+### V. Odin Language Excellence
+Code MUST follow Odin best practices and conventions. MUST use Odin's type system effectively with explicit error handling. All APIs MUST be idiomatic Odin with clear procedure signatures and proper memory management. MUST leverage Odin's features like struct methods, procedures, and compile-time constants where appropriate.
 
-## Technical Constraints
+## Performance Requirements
 
-### RE2 Compatibility Requirements
-- AST structures must match RE2 exactly - no additional node types or missing fields
-- Instruction set must be identical to RE2's Inst union representation
-- SparseSet data structure implementation is critical for NFA execution performance
-- No backreferences supported (RE2 design choice for linear time)
-
-### Performance Standards
-- Within 2x RE2 performance on common patterns
-- Bounded memory usage with configurable DFA state cache limits
-- O(pattern_length) compilation time guarantees
-- Linear stack usage for recursive patterns
-
-### Code Quality Standards
-- Use tabs for indentation, 1TBS brace style
-- Types: Pascal_Case, Procedures: snake_case, Variables: snake_case, Constants: ALL_CAPS
-- Explicit imports: core libs first, then local packages
-- Trailing commas required for multi-line arrays/structs
+- Linear time complexity O(n) for all matching operations guaranteed
+- Arena-based memory allocation with bounded memory usage  
+- Thread-safe concurrent matching support
+- UTF-8 Unicode support with proper rune handling
+- Memory-efficient SparseSet implementation for O(1) state management
+- No recursive calls that could cause stack overflow
 
 ## Development Workflow
 
-### Build & Validation Process
-- `odin build filename.odin -file` for single file builds
-- `odin build . -o:speed` for optimized builds
-- `odin test .` for all tests, `odin test filename.odin -file` for single tests
-- `odin check . -vet -vet-style` must pass before all commits
-- Test both success and error paths for all components
-
-### Implementation Phases
-1. **Regexp AST and Parser** - Build RE2-compatible AST with all node types
-2. **NFA Construction** - Thompson construction with SparseSet implementation
-3. **DFA Construction** - Lazy DFA with subset construction and memory limits
-4. **Integration** - Memory management, API design, complete test suite port
+All development MUST follow the specification-driven approach:
+1. User stories MUST be independently testable and deliverable
+2. Each user story MUST complete with full test coverage before moving to next
+3. Foundational infrastructure MUST be complete before any user story implementation
+4. Code reviews MUST verify constitution compliance including RE2 compatibility and linear time guarantees
+5. Performance testing MUST validate linear time behavior for all regex patterns
+6. Documentation updates MUST accompany all code changes
 
 ## Governance
 
-This constitution supersedes all other development practices and guidelines. All code changes must verify compliance with these principles. Amendments require:
-
+This constitution supersedes all other development practices. Amendments require:
 - Documentation of proposed changes with impact analysis
-- Approval through project maintainers
+- Approval through project maintainer review
 - Migration plan for any breaking changes
-- Version bump according to semantic versioning rules
+- Version update following semantic versioning rules
 
-All pull requests must include constitution compliance verification. Complexity beyond essential algorithm requirements must be explicitly justified. Use AGENTS.md for runtime development guidance and build commands.
+All pull requests and code reviews MUST verify compliance with these principles. Any complexity that violates these principles MUST be explicitly justified and documented. Use this constitution as the ultimate authority for all development decisions.
 
-**Version**: 1.0.0 | **Ratified**: 2025-10-09 | **Last Amended**: 2025-10-09
+**Version**: 1.0.0 | **Ratified**: 2025-10-11 | **Last Amended**: 2025-10-11

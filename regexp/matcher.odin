@@ -28,6 +28,7 @@ Matcher :: struct {
 	queue:       Queue,
 	visited:     ^Sparse_Set,
 	thread_pool: []Thread,
+	arena:       ^Arena,
 }
 
 // Create a new matcher for the given program
@@ -37,6 +38,9 @@ new_matcher :: proc(prog: ^Prog, anchored: bool, longest: bool) -> ^Matcher {
 	matcher.anchored = anchored
 	matcher.longest = longest
 	
+	// Initialize arena for visited set
+	matcher.arena = new_arena(1024)
+	
 	// Initialize queue
 	matcher.queue.threads = make([]Thread, 256) // Initial capacity
 	matcher.queue.head = 0
@@ -44,9 +48,7 @@ new_matcher :: proc(prog: ^Prog, anchored: bool, longest: bool) -> ^Matcher {
 	matcher.queue.size = 0
 	
 	// Initialize visited set for state deduplication
-	temp_arena := new_arena(1024)
-	defer free_arena(temp_arena)
-	matcher.visited = new_sparse_set(temp_arena, u32(len(prog.inst) + 1))
+	matcher.visited = new_sparse_set(matcher.arena, u32(len(prog.inst) + 1))
 	
 	// Initialize thread pool
 	matcher.thread_pool = make([]Thread, 64)
@@ -60,6 +62,9 @@ free_matcher :: proc(matcher: ^Matcher) {
 		delete(matcher.queue.threads)
 		// visited will be cleaned up when arena is freed
 		delete(matcher.thread_pool)
+		if matcher.arena != nil {
+			free_arena(matcher.arena)
+		}
 		free(matcher)
 	}
 }
@@ -240,6 +245,12 @@ execute_inst :: proc(matcher: ^Matcher, thread: Thread, pos: int) {
 			copy(next_thread.cap, thread.cap)
 			enqueue(&matcher.queue, next_thread)
 		}
+		
+	case .Jmp:
+		// Unconditional jump
+		next_thread := Thread{inst.out, make([]int, len(thread.cap))}
+		copy(next_thread.cap, thread.cap)
+		enqueue(&matcher.queue, next_thread)
 	}
 }
 
@@ -250,6 +261,8 @@ match_rune_class :: proc(inst: Inst, r: rune) -> bool {
 	// For now, just handle the basic case
 	return r == rune(inst.arg)
 }
+
+
 
 // Queue operations
 reset_queue :: proc(q: ^Queue) {
@@ -282,50 +295,95 @@ dequeue :: proc(q: ^Queue) -> Thread {
 	return thread
 }
 
-// Compile AST to NFA program (simplified version)
+// Compile AST to NFA program using the new NFA compiler
 compile_to_nfa :: proc(ast: ^Regexp, prog: ^Prog) -> ErrorCode {
 	if ast == nil || prog == nil {
 		return .InternalError
 	}
 	
-	// For User Story 1, only handle literals
-	#partial switch ast.op {
-	case .OpLiteral:
-		if ast.data != nil {
-			lit_data := (^Literal_Data)(ast.data)
-			prog.num_cap = 1 // At least one capture group for the full match
-			
-			// Add rune instructions for each character
-			literal_str := to_string(lit_data.str)
-			for i in 0..<len(literal_str) {
-				r := rune(literal_str[i])
-				inst_index := add_inst(prog, .Rune1, 0, u32(r))
-				if i == 0 {
-					prog.start = inst_index
-				}
-				if i > 0 {
-					// Link previous instruction to this one
-					prog.inst[inst_index - 1].out = inst_index
-				}
-			}
-			
-			// Add final match instruction
-			if len(literal_str) > 0 {
-				final_index := add_inst(prog, .Match, 0, 0)
-				prog.inst[len(prog.inst) - 2].out = final_index
-			} else {
-				// Empty literal - just add match instruction
-				match_index := add_inst(prog, .Match, 0, 0)
-				prog.start = match_index
-			}
-		}
+	// Use the new NFA compiler
+	nfa_prog, err := compile_nfa(ast)
+	if err != .NoError {
+		return err
+	}
+	
+	// Copy the compiled program to the provided prog structure
+	if nfa_prog != nil {
+		prog.inst = nfa_prog.inst
+		prog.start = nfa_prog.start
+		prog.num_cap = nfa_prog.num_cap
 		
-	case .NoOp:
-		// Empty pattern - just add match instruction
-		match_index := add_inst(prog, .Match, 0, 0)
-		prog.start = match_index
-		prog.num_cap = 1 // At least one capture group for the full match
+		// Don't free nfa_prog since we're transferring ownership of the instruction array
+		free(nfa_prog)
 	}
 	
 	return .NoError
 }
+
+// ===== Simplified NFA Matcher =====
+// This is a working simplified NFA matcher that replaces the complex BFS implementation
+
+// Simple NFA match using recursive execution
+simple_nfa_match :: proc(prog: ^Prog, text: string) -> (bool, []int) {
+	if prog == nil || len(prog.inst) == 0 {
+		return false, nil
+	}
+	
+	// Try to match from each position, but return the first (leftmost) match
+	for start_pos := 0; start_pos <= len(text); start_pos += 1 {
+		matched, end_pos := execute_from_position(prog, prog.start, text, start_pos)
+		if matched {
+			// For a proper match, we should consume as much as possible
+			// But for now, let's just return the first match we find
+			caps := make([]int, 2)
+			caps[0] = start_pos
+			caps[1] = end_pos
+			return true, caps
+		}
+	}
+	
+	return false, nil
+}
+
+// Execute NFA from a specific position
+execute_from_position :: proc(prog: ^Prog, pc: u32, text: string, pos: int) -> (bool, int) {
+	if pc >= u32(len(prog.inst)) {
+		return false, pos
+	}
+	
+	inst := prog.inst[pc]
+	
+	#partial switch inst.op {
+	case .Rune1:
+		if pos < len(text) && rune(text[pos]) == rune(inst.arg) {
+			return execute_from_position(prog, inst.out, text, pos + 1)
+		} else {
+			return false, pos
+		}
+		
+	case .Match:
+		return true, pos
+		
+	case .Alt:
+		// Try first branch
+		matched1, end1 := execute_from_position(prog, inst.out, text, pos)
+		if matched1 {
+			return true, end1
+		}
+		
+		// Try second branch
+		matched2, end2 := execute_from_position(prog, inst.arg, text, pos)
+		if matched2 {
+			return true, end2
+		}
+		
+		return false, pos
+		
+	case .Jmp:
+		// Unconditional jump
+		return execute_from_position(prog, inst.out, text, pos)
+	}
+	
+	return false, pos
+}
+

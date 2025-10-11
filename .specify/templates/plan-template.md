@@ -31,21 +31,20 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-### Required Compliance Gates
+### Required Gates (based on Odin RE2 Constitution):
 
-- **Algorithm Fidelity**: Does implementation preserve RE2's exact data structures and algorithms?
-- **Linear-Time Guarantee**: Is O(n) complexity preserved for all patterns? No exponential backtracking?
-- **Memory Safety**: Are Odin memory management patterns (new()/free()) used correctly?
-- **Test-Driven**: Are tests written first and complete RE2 test suite ported?
-- **Unicode Compliance**: Is full UTF-8 support implemented matching RE2 behavior?
+1. **RE2 Compatibility**: Design MUST ensure full compatibility with Google RE2 specifications
+2. **Linear Time Guarantee**: Architecture MUST guarantee O(n) complexity for all regex operations  
+3. **Test-First Development**: Test plan MUST be created before implementation, including linear time performance tests
+4. **Memory Safety**: Design MUST use arena allocation and ensure no memory leaks
+5. **Odin Excellence**: Implementation MUST follow Odin best practices and conventions
 
-### Technical Constraints Validation
-
-- AST structures match RE2 exactly ✓/✗
-- SparseSet implementation for NFA execution ✓/✗  
-- Bounded DFA state cache ✓/✗
-- Performance targets within 2x RE2 ✓/✗
-- Code style compliance (tabs, naming, imports) ✓/✗
+### Compliance Checklist:
+- [ ] NFA-based matching approach (for linear time guarantee)
+- [ ] Arena allocation strategy defined
+- [ ] Test strategy includes RE2 compliance tests
+- [ ] Linear time performance test approach defined
+- [ ] Memory management boundaries established
 
 ## Project Structure
 

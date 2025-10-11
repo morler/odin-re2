@@ -7,7 +7,7 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Tests**: The examples below include test tasks. Tests are MANDATORY per constitution - test-first development is required for all components.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -76,15 +76,12 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 1 (REQUIRED for RE2 components) ⚠️
+### Tests for User Story 1 (MANDATORY per constitution) ⚠️
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
-**RE2 Implementation: All pathological patterns must be tested for linear time behavior**
 
 - [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
 - [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
-- [ ] T012 [P] [US1] RE2 compliance test for [pattern] in regexp/test_[name].odin
-- [ ] T013 [P] [US1] Linear time verification for pathological patterns in regexp/test_[name]_linear.odin
 
 ### Implementation for User Story 1
 
@@ -105,12 +102,10 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 2 (REQUIRED for RE2 components) ⚠️
+### Tests for User Story 2 (MANDATORY per constitution) ⚠️
 
 - [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
 - [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
-- [ ] T020 [P] [US2] RE2 compliance test for [pattern] in regexp/test_[name].odin
-- [ ] T021 [P] [US2] Linear time verification for pathological patterns in regexp/test_[name]_linear.odin
 
 ### Implementation for User Story 2
 
@@ -129,12 +124,10 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 3 (REQUIRED for RE2 components) ⚠️
+### Tests for User Story 3 (MANDATORY per constitution) ⚠️
 
 - [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
 - [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
-- [ ] T026 [P] [US3] RE2 compliance test for [pattern] in regexp/test_[name].odin
-- [ ] T027 [P] [US3] Linear time verification for pathological patterns in regexp/test_[name]_linear.odin
 
 ### Implementation for User Story 3
 

@@ -1,10 +1,10 @@
-package tests
+package main
 
 import "core:testing"
 import "core:time"
 import "core:fmt"
 import "core:strings"
-import "../regexp"
+import "regexp"
 
 // Test linear time complexity for simple literals
 // This is CRITICAL for RE2 compliance - must verify O(n) behavior
@@ -17,32 +17,33 @@ test_linear_time_simple_literals :: proc(t: ^testing.T) {
 	// Test with increasing input sizes to verify linear time
 	sizes := []int{100, 1000, 10000}
 	
-	for size in sizes {
-		// Create input string with pattern at the end using simple allocation
-		input_data := make([]u8, size + 1)
-		for i in 0..<size {
-			input_data[i] = 'a'
-		}
-		input_data[size] = 'x'
-		input := string(input_data)
-		
-		// Measure time
-		start := time.now()
-		result, err := regexp.match(pattern, input)
-		duration := time.since(start)
-		
-		testing.expect(t, err == .NoError)
-		testing.expect(t, result.matched)
-		
-		// Time should grow linearly with input size
-		// Allow some tolerance for measurement noise
-		max_expected_ms := f64(size) * 0.01 // 10 microseconds per character
-		actual_ms := f64(duration) / f64(time.Millisecond)
-		
-		testing.expect(t, actual_ms < max_expected_ms)
-		
-		fmt.printf("Size %d: %.2fms\n", size, actual_ms)
-	}
+ 	for size in sizes {
+ 		// Create input string with pattern at the end using simple allocation
+ 		input_data := make([]u8, size + 1)
+ 		defer delete(input_data)
+ 		for i in 0..<size {
+ 			input_data[i] = 'a'
+ 		}
+ 		input_data[size] = 'x'
+ 		input := string(input_data)
+ 		
+ 		// Measure time
+ 		start := time.now()
+ 		result, err := regexp.match(pattern, input)
+ 		duration := time.since(start)
+ 		
+ 		testing.expect(t, err == .NoError)
+ 		testing.expect(t, result.matched)
+ 		
+ 		// Time should grow linearly with input size
+ 		// Allow some tolerance for measurement noise
+ 		max_expected_ms := f64(size) * 0.01 // 10 microseconds per character
+ 		actual_ms := f64(duration) / f64(time.Millisecond)
+ 		
+ 		testing.expect(t, actual_ms < max_expected_ms)
+ 		
+ 		fmt.printf("Size %d: %.2fms\n", size, actual_ms)
+ 	}
 }
 
 // Test performance with long patterns
@@ -51,34 +52,35 @@ test_pattern_compilation_performance :: proc(t: ^testing.T) {
 	// Test compilation time for patterns of different lengths
 	pattern_lengths := []int{10, 100, 500}
 	
-	for length in pattern_lengths {
-		// Create pattern with repeated literals using simple allocation
-		pattern_data := make([]u8, length)
-		for i in 0..<length {
-			pattern_data[i] = 'a'
-		}
-		pattern_str := string(pattern_data)
-		
-		// Measure compilation time
-		start := time.now()
-		pattern, err := regexp.regexp(pattern_str)
-		duration := time.since(start)
-		
-		testing.expect(t, err == .NoError)
-		testing.expect(t, pattern != nil)
-		
-		if pattern != nil {
-			regexp.free_regexp(pattern)
-		}
-		
-		// Compilation should be fast - under 10ms even for 1KB patterns
-		max_expected_ms := 10.0
-		actual_ms := f64(duration) / f64(time.Millisecond)
-		
-		testing.expect(t, actual_ms < max_expected_ms)
-		
-		fmt.printf("Pattern length %d: compilation %.2fms\n", length, actual_ms)
-	}
+ 	for length in pattern_lengths {
+ 		// Create pattern with repeated literals using simple allocation
+ 		pattern_data := make([]u8, length)
+ 		defer delete(pattern_data)
+ 		for i in 0..<length {
+ 			pattern_data[i] = 'a'
+ 		}
+ 		pattern_str := string(pattern_data)
+ 		
+ 		// Measure compilation time
+ 		start := time.now()
+ 		pattern, err := regexp.regexp(pattern_str)
+ 		duration := time.since(start)
+ 		
+ 		testing.expect(t, err == .NoError)
+ 		testing.expect(t, pattern != nil)
+ 		
+ 		if pattern != nil {
+ 			regexp.free_regexp(pattern)
+ 		}
+ 		
+ 		// Compilation should be fast - under 10ms even for 1KB patterns
+ 		max_expected_ms := 10.0
+ 		actual_ms := f64(duration) / f64(time.Millisecond)
+ 		
+ 		testing.expect(t, actual_ms < max_expected_ms)
+ 		
+ 		fmt.printf("Pattern length %d: compilation %.2fms\n", length, actual_ms)
+ 	}
 }
 
 // Test repeated matching performance (pattern reuse)
