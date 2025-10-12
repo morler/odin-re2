@@ -1,5 +1,6 @@
 package regexp
 
+import "core:c"
 // Arena memory allocator for high-performance regex compilation and matching
 // Provides deterministic memory usage and excellent performance
 
@@ -11,12 +12,15 @@ Memory_Chunk :: struct {
 	size: int,
 }
 
-// Arena allocator for regex compilation and matching
+// Enhanced arena allocator for regex compilation and matching
 Arena :: struct {
-	data:     []byte,        // Raw memory buffer
-	offset:   int,           // Current allocation position
-	capacity: int,           // Total buffer size
-	chunks:   []Memory_Chunk, // Memory pool for efficiency
+	data:           []byte,        // Raw memory buffer
+	offset:         int,           // Current allocation position
+	capacity:       int,           // Total buffer size
+	chunks:         []Memory_Chunk, // Memory pool for efficiency
+	peak_usage:     int,           // Peak memory usage tracking
+	allocation_count: u32,         // Number of allocations
+	debug_bounds:   bool,          // Bounds checking in debug builds
 }
 
 // String_View for zero-copy string operations
@@ -25,17 +29,20 @@ String_View :: struct {
 	len:  int,
 }
 
-// Create a new arena with initial capacity
+// Create a new arena with initial capacity and bounds checking
 new_arena :: proc(initial_capacity: int = 4096) -> ^Arena {
-	arena := new(Arena)
+	arena := (^Arena)(c.malloc(size_of(Arena)))
 	arena.data = make([]byte, initial_capacity)
 	arena.capacity = initial_capacity
 	arena.offset = 0
 	arena.chunks = []Memory_Chunk{}
+	arena.peak_usage = 0
+	arena.allocation_count = 0
+	arena.debug_bounds = true  // Enable bounds checking in debug builds
 	return arena
 }
 
-// Allocate memory from arena
+// Allocate memory from arena with bounds checking and tracking
 arena_alloc :: proc(arena: ^Arena, size: int) -> rawptr {
 	assert(arena != nil, "Arena cannot be nil")
 	assert(size > 0, "Size must be positive")
@@ -43,11 +50,12 @@ arena_alloc :: proc(arena: ^Arena, size: int) -> rawptr {
 	// Align to 8-byte boundary for performance
 	aligned_size := (size + 7) & 0xFFFFFFF8
 	
-	if arena.offset + aligned_size > arena.capacity {
+	// Bounds checking
+	if arena.debug_bounds && arena.offset + aligned_size > arena.capacity {
 		// Need to expand arena
 		new_capacity := arena.capacity * 2
 		if new_capacity < arena.offset + aligned_size {
-			new_capacity = arena.offset + aligned_size
+			new_capacity = arena.offset + aligned_size + 4096  // Add extra space
 		}
 		
 		new_data: []byte
@@ -63,6 +71,13 @@ arena_alloc :: proc(arena: ^Arena, size: int) -> rawptr {
 	
 	ptr := &arena.data[arena.offset]
 	arena.offset += aligned_size
+	
+	// Update tracking
+	arena.allocation_count += 1
+	if arena.offset > arena.peak_usage {
+		arena.peak_usage = arena.offset
+	}
+	
 	return ptr
 }
 
@@ -109,12 +124,72 @@ free_arena :: proc(arena: ^Arena) {
 	free(arena)
 }
 
+// ===========================================================================
+// MEMORY USAGE BOUNDS CHECKING
+// ===========================================================================
+
+// Memory usage constraints for regex operations
+Memory_Constraints :: struct {
+	max_per_operation: u32,    // Maximum memory per operation (1MB)
+	max_growth_rate: f32,      // Maximum growth rate multiplier
+	soft_limit: u32,           // Soft limit for warnings
+	hard_limit: u32,           // Hard limit for errors
+}
+
+// Default memory constraints
+DEFAULT_MEMORY_CONSTRAINTS :: Memory_Constraints {
+	max_per_operation = 1024 * 1024,  // 1MB
+	max_growth_rate = 2.0,             // 2x input size
+	soft_limit = 512 * 1024,           // 512KB
+	hard_limit = 1024 * 1024,          // 1MB
+}
+
+// Check memory usage against constraints
+check_memory_constraints :: proc(arena: ^Arena, input_size: int, constraints: Memory_Constraints) -> (ok: bool, warning: bool) {
+	used, capacity, utilization, peak, _ := arena_stats(arena)
+	
+	// Check per-operation limit
+	if used > int(constraints.max_per_operation) {
+		return false, false  // Exceeds hard limit
+	}
+	
+	// Check growth rate
+	expected_growth := f32(input_size) * constraints.max_growth_rate
+	if f32(used) > expected_growth {
+		return false, false  // Exceeds growth rate
+	}
+	
+	// Check soft limit
+	if used > int(constraints.soft_limit) {
+		return true, true   // Warning threshold
+	}
+	
+	return true, false  // Within limits
+}
+
+// Get memory usage report
+memory_usage_report :: proc(arena: ^Arena) -> string {
+	used, capacity, utilization, peak, alloc_count := arena_stats(arena)
+	
+	report := fmt.tprintf("Memory Usage Report:\n")
+	report += fmt.tprintf("  Used: %d bytes (%.2f MB)\n", used, f32(used) / (1024 * 1024))
+	report += fmt.tprintf("  Capacity: %d bytes (%.2f MB)\n", capacity, f32(capacity) / (1024 * 1024))
+	report += fmt.tprintf("  Utilization: %.1f%%\n", utilization * 100)
+	report += fmt.tprintf("  Peak: %d bytes (%.2f MB)\n", peak, f32(peak) / (1024 * 1024))
+	report += fmt.tprintf("  Allocations: %d\n", alloc_count)
+	report += fmt.tprintf("  Average allocation: %.1f bytes\n", f32(used) / f32(alloc_count))
+	
+	return report
+}
+
 // Get current arena usage statistics
-arena_stats :: proc(arena: ^Arena) -> (used: int, capacity: int, utilization: f32) {
+arena_stats :: proc(arena: ^Arena) -> (used: int, capacity: int, utilization: f32, peak: int, alloc_count: u32) {
 	assert(arena != nil, "Arena cannot be nil")
 	used = arena.offset
 	capacity = arena.capacity
 	utilization = f32(used) / f32(capacity)
+	peak = arena.peak_usage
+	alloc_count = arena.allocation_count
 	return
 }
 
@@ -270,4 +345,136 @@ utf8_peek :: proc(iter: ^UTF8_Iterator) -> rune {
 // Get byte position of current character
 utf8_position :: proc(iter: ^UTF8_Iterator) -> int {
 	return iter.pos - iter.width
+}
+
+// ============================================================================
+// ARENA SLICE ALLOCATION - Eliminates runtime.make_slice dependency
+// ============================================================================
+
+// Allocate a slice in arena memory
+arena_alloc_slice :: proc(arena: ^Arena, $T: typeid, len: int) -> []T {
+	if len == 0 {
+		return []T{}
+	}
+	
+	// Allocate contiguous memory for slice data and header
+	total_size := size_of(T) * len
+	data_ptr := arena_alloc(arena, total_size)
+	
+	// Create slice pointing to arena memory
+	slice_data := ([^]T)(data_ptr)
+	return slice_data[:len]
+}
+
+// Allocate a slice and copy data from existing slice
+arena_alloc_slice_copy :: proc(arena: ^Arena, $T: typeid, source: []T) -> []T {
+	if len(source) == 0 {
+		return []T{}
+	}
+	
+	result := arena_alloc_slice(arena, T, len(source))
+	copy(result, source)
+	return result
+}
+
+// ===========================================================================
+// MEMORY POOL FOR TEMPORARY ALLOCATIONS
+// ===========================================================================
+
+// Memory pool for frequently used temporary objects
+Memory_Pool :: struct {
+	freelist: []rawptr,    // Free list of available objects
+	object_size: int,       // Size of each object
+	capacity: int,          // Maximum pool size
+	count: int,             // Current number of free objects
+	arena: ^Arena,          // Arena for initial allocation
+}
+
+// Create a new memory pool
+new_memory_pool :: proc(arena: ^Arena, object_size: int, initial_capacity: int = 16) -> ^Memory_Pool {
+	pool := (^Memory_Pool)(arena_alloc(arena, size_of(Memory_Pool)))
+	pool.object_size = object_size
+	pool.capacity = initial_capacity * 4  // Allow growth
+	pool.count = 0
+	pool.arena = arena
+	pool.freelist = arena_alloc_slice(arena, rawptr, pool.capacity)
+	return pool
+}
+
+// Allocate from memory pool
+pool_alloc :: proc(pool: ^Memory_Pool) -> rawptr {
+	if pool.count > 0 {
+		pool.count -= 1
+		return pool.freelist[pool.count]
+	}
+	
+	// Pool exhausted, allocate from arena
+	return arena_alloc(pool.arena, pool.object_size)
+}
+
+// Return object to memory pool
+pool_free :: proc(pool: ^Memory_Pool, ptr: rawptr) {
+	if pool.count < pool.capacity {
+		pool.freelist[pool.count] = ptr
+		pool.count += 1
+	}
+	// Otherwise, let arena handle cleanup
+}
+
+// ===========================================================================
+// MEMORY LEAK DETECTION (DEBUG BUILDS)
+// ===========================================================================
+
+// Memory allocation tracking for leak detection
+Allocation_Tracker :: struct {
+	allocations: []Allocation_Info,
+	count: int,
+	arena: ^Arena,
+}
+
+Allocation_Info :: struct {
+	ptr: rawptr,
+	size: int,
+	file: string,
+	line: int,
+}
+
+// Create allocation tracker (debug builds only)
+new_allocation_tracker :: proc(arena: ^Arena) -> ^Allocation_Tracker {
+	tracker := (^Allocation_Tracker)(arena_alloc(arena, size_of(Allocation_Tracker)))
+	tracker.allocations = arena_alloc_slice(arena, Allocation_Info, 1024)
+	tracker.count = 0
+	tracker.arena = arena
+	return tracker
+}
+
+// Track allocation
+track_allocation :: proc(tracker: ^Allocation_Tracker, ptr: rawptr, size: int, file: string, line: int) {
+	if tracker.count < len(tracker.allocations) {
+		tracker.allocations[tracker.count] = Allocation_Info{ptr, size, file, line}
+		tracker.count += 1
+	}
+}
+
+// Untrack allocation
+untrack_allocation :: proc(tracker: ^Allocation_Tracker, ptr: rawptr) {
+	for i in 0..<tracker.count {
+		if tracker.allocations[i].ptr == ptr {
+			// Remove by swapping with last element
+			tracker.allocations[i] = tracker.allocations[tracker.count - 1]
+			tracker.count -= 1
+			break
+		}
+	}
+}
+
+// Report leaks
+report_leaks :: proc(tracker: ^Allocation_Tracker) {
+	if tracker.count > 0 {
+		printf("Memory leaks detected: %d allocations\n", tracker.count)
+		for i in 0..<tracker.count {
+			info := tracker.allocations[i]
+			printf("  Leak: %p (%d bytes) at %s:%d\n", info.ptr, info.size, info.file, info.line)
+		}
+	}
 }

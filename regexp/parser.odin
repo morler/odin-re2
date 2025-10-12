@@ -150,8 +150,7 @@ clone_node :: proc(node: ^Regexp, arena: ^Arena) -> ^Regexp {
 	
 	case .OpConcat:
 		concat_data := (^Concat_Data)(node.data)
-		cloned_subs: []^Regexp
-		cloned_subs, _ = runtime.make_slice([]^Regexp, len(concat_data.subs))
+		cloned_subs := arena_alloc_slice(arena, ^Regexp, len(concat_data.subs))
 		for i in 0..<len(concat_data.subs) {
 			cloned_subs[i] = clone_node(concat_data.subs[i], arena)
 		}
@@ -159,8 +158,7 @@ clone_node :: proc(node: ^Regexp, arena: ^Arena) -> ^Regexp {
 	
 	case .OpAlternate:
 		alt_data := (^Alternate_Data)(node.data)
-		cloned_subs: []^Regexp
-		cloned_subs, _ = runtime.make_slice([]^Regexp, len(alt_data.subs))
+		cloned_subs := arena_alloc_slice(arena, ^Regexp, len(alt_data.subs))
 		for i in 0..<len(alt_data.subs) {
 			cloned_subs[i] = clone_node(alt_data.subs[i], arena)
 		}
@@ -289,14 +287,12 @@ parse_concat :: proc(p: ^Parser) -> ^Regexp {
 		return nodes[0]
 	}
 	
-	// Build concatenation tree
-	result := nodes[0]
-	for i in 1..<count {
-		concats := [2]^Regexp{result, nodes[i]}
-		result = make_concat(p.arena, concats[:])
+	// Build flat concatenation
+	slice := arena_alloc_slice(p.arena, ^Regexp, count)
+	for i in 0..<count {
+		slice[i] = nodes[i]
 	}
-	
-	return result
+	return make_concat(p.arena, slice)
 }
 
 // Parse term (highest precedence) - literals, char classes, groups, etc.
@@ -539,6 +535,12 @@ parse_escape :: proc(p: ^Parser) -> ^Regexp {
 	case '|': return make_literal(p.arena, "|")
 	case '^': return make_literal(p.arena, "^")
 	case '$': return make_literal(p.arena, "$")
+	case 'd': return make_char_class(p.arena, []Char_Range{{'0', '9'}}, false)
+	case 'D': return make_char_class(p.arena, []Char_Range{{'0', '9'}}, true)
+	case 'w': return make_char_class(p.arena, []Char_Range{{'a', 'z'}, {'A', 'Z'}, {'0', '9'}, {'_', '_'}}, false)
+	case 'W': return make_char_class(p.arena, []Char_Range{{'a', 'z'}, {'A', 'Z'}, {'0', '9'}, {'_', '_'}}, true)
+	case 's': return make_char_class(p.arena, []Char_Range{{' ', ' '}, {'\t', '\t'}, {'\n', '\n'}, {'\r', '\r'}, {'\f', '\f'}, {'\v', '\v'}}, false)
+	case 'S': return make_char_class(p.arena, []Char_Range{{' ', ' '}, {'\t', '\t'}, {'\n', '\n'}, {'\r', '\r'}, {'\f', '\f'}, {'\v', '\v'}}, true)
 	case:
 		// For now, treat unknown escapes as literal character
 		if !at_end(p) {

@@ -115,8 +115,7 @@ make_char_class :: proc(arena: ^Arena, ranges: []Char_Range, negated: bool) -> ^
 	}
 	
 	cc_data := (^CharClass_Data)(node.data)
-	cc_data.ranges, _ = runtime.make_slice([]Char_Range, len(ranges))
-	copy(cc_data.ranges, ranges)
+	cc_data.ranges = arena_alloc_slice_copy(arena, Char_Range, ranges)
 	cc_data.negated = negated
 	
 	return node
@@ -199,8 +198,7 @@ make_concat :: proc(arena: ^Arena, subs: []^Regexp) -> ^Regexp {
 	}
 	
 	concat_data := (^Concat_Data)(node.data)
-	concat_data.subs, _ = runtime.make_slice([]^Regexp, len(subs))
-	copy(concat_data.subs, subs)
+	concat_data.subs = arena_alloc_slice_copy(arena, ^Regexp, subs)
 	
 	return node
 }
@@ -219,8 +217,7 @@ make_alternate :: proc(arena: ^Arena, subs: []^Regexp) -> ^Regexp {
 	}
 	
 	alt_data := (^Alternate_Data)(node.data)
-	alt_data.subs, _ = runtime.make_slice([]^Regexp, len(subs))
-	copy(alt_data.subs, subs)
+	alt_data.subs = arena_alloc_slice_copy(arena, ^Regexp, subs)
 	
 	return node
 }
