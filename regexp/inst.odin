@@ -13,6 +13,9 @@ Inst_Op :: enum u8 {
 	Match,         // Successful match
 	Cap,           // Capture group: start/end capture
 	Empty,         // Empty-width assertion: ^, $, \b, etc.
+tAny,           // Any character match
+	AnyNotNL,      // Any character except newline
+	Class,         // Character class
 }
 
 // Compact 32-bit instruction encoding for optimal cache performance
@@ -47,8 +50,8 @@ Program :: struct {
 
 // Create new program with arena allocation
 new_program :: proc(arena: ^Arena, capacity: int) -> ^Program {
-	prog := arena_alloc(^Program, arena)
-	prog.instructions = make([]Inst, capacity)
+	prog := (^Program)(arena_alloc(arena, size_of(Program)))
+	prog.instructions = make([dynamic]Inst, 0, capacity)
 	prog.capture_count = 0
 	prog.arena = arena
 	return prog
@@ -107,22 +110,18 @@ compile_alt :: proc(prog: ^Program, left, right: Fragment) -> Fragment {
 	prog.instructions[jmp2] = inst_encode(.Jmp, u32(right.start))
 	
 	// Combine exit points
-	outs := make([]int, 0, len(left.out) + len(right.out))
-	for out in left.out {
-		append(&outs, out)
-	}
-	for out in right.out {
-		append(&outs, out)
-	}
+	outs_slice := make([]int, len(left.out) + len(right.out))
+	copy(outs_slice, left.out)
+	copy(outs_slice[len(left.out):], right.out)
 	
-	return make_fragment_multi(jmp1, outs)
+	return make_fragment_multi(jmp1, outs_slice)
 }
 
 // Compile concatenation (ab)
 compile_concat :: proc(prog: ^Program, left, right: Fragment) -> Fragment {
 	// Patch left's exits to right's start
 	patch(prog, left, right.start)
-	return make_fragment(right.start, right.out)
+	return make_fragment_multi(right.start, right.out)
 }
 
 // Compile star operator (a*)
@@ -147,7 +146,7 @@ compile_plus :: proc(prog: ^Program, frag: Fragment) -> Fragment {
 	// Plus is like star but must match at least once
 	star_frag := compile_star(prog, frag)
 	patch(prog, frag, star_frag.start)
-	return make_fragment(frag.start, star_frag.out)
+	return make_fragment_multi(frag.start, star_frag.out)
 }
 
 // Compile question mark (a?)
@@ -201,8 +200,9 @@ compile_ast_to_nfa :: proc(prog: ^Program, ast: ^Regexp) -> Fragment {
 	case .OpLiteral:
 		if ast.data != nil {
 			lit_data := (^Literal_Data)(ast.data)
-			if len(string(lit_data.str)) > 0 {
-				return compile_char(prog, rune(string(lit_data.str)[0]))
+			str := string_view_to_string(lit_data.str)
+			if len(str) > 0 {
+				return compile_char(prog, rune(str[0]))
 			}
 		}
 		
@@ -258,8 +258,18 @@ compile_ast_to_nfa :: proc(prog: ^Program, ast: ^Regexp) -> Fragment {
 				return compile_quest(prog, frag)
 			}
 		}
+
+	case .OpCapture:
+		if ast.data != nil {
+			cap_data := (^Capture_Data)(ast.data)
+			if cap_data.sub != nil {
+				// For now, just compile the sub-expression (ignore capture semantics)
+				// TODO: Add proper capture group handling with Cap instructions
+				return compile_ast_to_nfa(prog, cap_data.sub)
+			}
+		}
 	}
-	
+
 	// Default: empty match
 	return make_fragment(-1, -1)
 }
