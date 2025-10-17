@@ -54,15 +54,16 @@ at_end :: proc(p: ^Parser) -> bool {
 
 // Parse a regular expression (main entry point)
 parse_regexp_internal :: proc(pattern: string, flags: Parse_Flags) -> (^Regexp, ErrorCode) {
+	// Don't free the arena here - caller will handle cleanup via clone_node
 	arena := new_arena(4096)
-	defer free_arena(arena)
 
 	parser := new_parser(pattern, flags, arena)
 
 	if at_end(&parser) {
 		// Empty pattern
 		node := make_literal(arena, "")
-		return clone_to_new_arena(node), .NoError
+		// Return node in temporary arena - caller must clone
+		return node, .NoError
 	}
 
 	// Parse full regular expression (User Story 2+)
@@ -76,8 +77,8 @@ parse_regexp_internal :: proc(pattern: string, flags: Parse_Flags) -> (^Regexp, 
 		return nil, .ParseError
 	}
 
-	// Clone the node to a new arena since parser arena will be freed
-	return clone_to_new_arena(node), .NoError
+	// Return node in temporary arena - caller must clone
+	return node, .NoError
 }
 
 // Parse literal string (for User Story 1)
@@ -122,7 +123,7 @@ clone_node :: proc(node: ^Regexp, arena: ^Arena) -> ^Regexp {
 	if node == nil {
 		return nil
 	}
-	
+
 	switch node.op {
 	case .OpLiteral:
 		lit_data := (^Literal_Data)(node.data)
@@ -617,46 +618,51 @@ parse_term_base :: proc(p: ^Parser) -> ^Regexp {
 	if at_end(p) {
 		return nil
 	}
-	
+
 	ch := peek(p)
-	
+
+	// Check for quantifiers at the beginning (invalid syntax)
+	if ch == '*' || ch == '+' || ch == '?' || ch == '{' {
+		return nil // Quantifier without target
+	}
+
 	// Handle character classes
 	if ch == '[' {
 		return parse_char_class(p)
 	}
-	
+
 	// Handle groups
 	if ch == '(' {
 		return parse_group(p)
 	}
-	
+
 	// Handle special characters
 	if ch == '.' {
 		advance(p)
 		return make_any_char(p.arena, false)
 	}
-	
+
 	// Handle anchors
 	if ch == '^' {
 		advance(p)
 		return make_anchor(p.arena, .OpBeginLine)
 	}
-	
+
 	if ch == '$' {
 		advance(p)
 		return make_anchor(p.arena, .OpEndLine)
 	}
-	
+
 	// Handle escaped characters
 	if ch == '\\' {
 		return parse_escape(p)
 	}
-	
+
 	// Default: parse as literal character
 	if at_end(p) {
 		return nil
 	}
-	
+
 	advance(p)
 	return make_literal(p.arena, string([]byte{byte(ch)}))
 }

@@ -98,10 +98,10 @@ make_literal :: proc(arena: ^Arena, str: string) -> ^Regexp {
 		flags = {},
 		data = arena_alloc(arena, size_of(Literal_Data)),
 	}
-	
+
 	lit_data := (^Literal_Data)(node.data)
 	lit_data^ = Literal_Data{str = make_string_view_copy(arena, str)}
-	
+
 	return node
 }
 

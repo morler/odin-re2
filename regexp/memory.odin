@@ -5,6 +5,7 @@ import "core:c"
 // Provides deterministic memory usage and excellent performance
 
 import "base:runtime"
+import "core:fmt"
 
 // Memory chunk for arena allocation
 Memory_Chunk :: struct {
@@ -29,9 +30,14 @@ String_View :: struct {
 	len:  int,
 }
 
+// Convert String_View to string
+string_view_to_string :: proc(sv: String_View) -> string {
+	return string(sv.data[:sv.len])
+}
+
 // Create a new arena with initial capacity and bounds checking
 new_arena :: proc(initial_capacity: int = 4096) -> ^Arena {
-	arena := (^Arena)(c.malloc(size_of(Arena)))
+	arena := new(Arena)
 	arena.data = make([]byte, initial_capacity)
 	arena.capacity = initial_capacity
 	arena.offset = 0
@@ -78,6 +84,64 @@ arena_alloc :: proc(arena: ^Arena, size: int) -> rawptr {
 		arena.peak_usage = arena.offset
 	}
 	
+	return ptr
+}
+
+// Allocate cache-line aligned memory (64-byte) for performance-critical structures
+arena_alloc_aligned :: proc(arena: ^Arena, size: int, alignment: int = 64) -> rawptr {
+	assert(arena != nil, "Arena cannot be nil")
+	assert(size > 0, "Size must be positive")
+	assert(alignment > 0 && (alignment & (alignment - 1)) == 0, "Alignment must be power of 2")
+
+	// Calculate aligned size and offset
+	aligned_size := (size + alignment - 1) & ~(alignment - 1)
+
+	// Align current offset to cache line boundary
+	data_ptr := raw_data(arena.data)
+	current_addr := uintptr(uintptr(data_ptr) + uintptr(arena.offset))
+	alignment_offset := (alignment - int(current_addr % uintptr(alignment))) % alignment
+	total_needed := alignment_offset + aligned_size
+
+	// Bounds checking
+	if arena.debug_bounds && arena.offset + total_needed > arena.capacity {
+		// Need to expand arena - ensure expansion starts at aligned boundary
+		new_capacity := arena.capacity * 2
+		if new_capacity < arena.offset + total_needed {
+			new_capacity = arena.offset + total_needed + 4096
+		}
+
+		// Allocate new capacity with alignment in mind
+		new_capacity = (new_capacity + alignment - 1) & ~(alignment - 1)
+
+		new_data: []byte
+		new_data, _ = runtime.make_slice([]byte, new_capacity)
+		if len(new_data) == 0 {
+			return nil
+		}
+		copy(new_data, arena.data)
+		// arena.data will be garbage collected
+		arena.data = new_data
+		arena.capacity = new_capacity
+
+		// Recalculate alignment for new buffer
+		data_ptr = raw_data(arena.data)
+		current_addr = uintptr(uintptr(data_ptr) + uintptr(arena.offset))
+		alignment_offset = (alignment - int(current_addr % uintptr(alignment))) % alignment
+		total_needed = alignment_offset + aligned_size
+	}
+
+	// Apply alignment offset
+	arena.offset += alignment_offset
+
+	ptr := &arena.data[arena.offset]
+	arena.offset += aligned_size
+
+	// Update tracking
+	arena.allocation_count += 1
+	if arena.offset > arena.peak_usage {
+		arena.peak_usage = arena.offset
+	}
+
 	return ptr
 }
 
@@ -171,15 +235,21 @@ check_memory_constraints :: proc(arena: ^Arena, input_size: int, constraints: Me
 memory_usage_report :: proc(arena: ^Arena) -> string {
 	used, capacity, utilization, peak, alloc_count := arena_stats(arena)
 	
-	report := fmt.tprintf("Memory Usage Report:\n")
-	report += fmt.tprintf("  Used: %d bytes (%.2f MB)\n", used, f32(used) / (1024 * 1024))
-	report += fmt.tprintf("  Capacity: %d bytes (%.2f MB)\n", capacity, f32(capacity) / (1024 * 1024))
-	report += fmt.tprintf("  Utilization: %.1f%%\n", utilization * 100)
-	report += fmt.tprintf("  Peak: %d bytes (%.2f MB)\n", peak, f32(peak) / (1024 * 1024))
-	report += fmt.tprintf("  Allocations: %d\n", alloc_count)
-	report += fmt.tprintf("  Average allocation: %.1f bytes\n", f32(used) / f32(alloc_count))
-	
-	return report
+	return fmt.tprintf(
+		"Memory Usage Report:\n" +
+		"  Used: %d bytes (%.2f MB)\n" +
+		"  Capacity: %d bytes (%.2f MB)\n" +
+		"  Utilization: %.1f%%\n" +
+		"  Peak: %d bytes (%.2f MB)\n" +
+		"  Allocations: %d\n" +
+		"  Average allocation: %.1f bytes\n",
+		used, f32(used) / (1024 * 1024),
+		capacity, f32(capacity) / (1024 * 1024),
+		utilization * 100,
+		peak, f32(peak) / (1024 * 1024),
+		alloc_count,
+		f32(used) / f32(alloc_count)
+	)
 }
 
 // Get current arena usage statistics
@@ -356,11 +426,26 @@ arena_alloc_slice :: proc(arena: ^Arena, $T: typeid, len: int) -> []T {
 	if len == 0 {
 		return []T{}
 	}
-	
+
 	// Allocate contiguous memory for slice data and header
 	total_size := size_of(T) * len
 	data_ptr := arena_alloc(arena, total_size)
-	
+
+	// Create slice pointing to arena memory
+	slice_data := ([^]T)(data_ptr)
+	return slice_data[:len]
+}
+
+// Allocate a cache-line aligned slice in arena memory for performance-critical data
+arena_alloc_slice_aligned :: proc(arena: ^Arena, $T: typeid, len: int, alignment: int = 64) -> []T {
+	if len == 0 {
+		return []T{}
+	}
+
+	// Allocate contiguous memory for slice data with cache-line alignment
+	total_size := size_of(T) * len
+	data_ptr := arena_alloc_aligned(arena, total_size, alignment)
+
 	// Create slice pointing to arena memory
 	slice_data := ([^]T)(data_ptr)
 	return slice_data[:len]
@@ -437,6 +522,7 @@ Allocation_Info :: struct {
 	size: int,
 	file: string,
 	line: int,
+	active: bool,
 }
 
 // Create allocation tracker (debug builds only)
@@ -451,7 +537,7 @@ new_allocation_tracker :: proc(arena: ^Arena) -> ^Allocation_Tracker {
 // Track allocation
 track_allocation :: proc(tracker: ^Allocation_Tracker, ptr: rawptr, size: int, file: string, line: int) {
 	if tracker.count < len(tracker.allocations) {
-		tracker.allocations[tracker.count] = Allocation_Info{ptr, size, file, line}
+		tracker.allocations[tracker.count] = Allocation_Info{ptr, size, file, line, true}
 		tracker.count += 1
 	}
 }
@@ -471,10 +557,12 @@ untrack_allocation :: proc(tracker: ^Allocation_Tracker, ptr: rawptr) {
 // Report leaks
 report_leaks :: proc(tracker: ^Allocation_Tracker) {
 	if tracker.count > 0 {
-		printf("Memory leaks detected: %d allocations\n", tracker.count)
+		fmt.printf("Memory leaks detected: %d allocations\n", tracker.count)
 		for i in 0..<tracker.count {
-			info := tracker.allocations[i]
-			printf("  Leak: %p (%d bytes) at %s:%d\n", info.ptr, info.size, info.file, info.line)
+			info := &tracker.allocations[i]
+			if info.active {
+				fmt.printf("  Leak: %p (%d bytes) at %s:%d\n", info.ptr, info.size, info.file, info.line)
+			}
 		}
 	}
 }
