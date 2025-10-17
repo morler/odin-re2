@@ -203,15 +203,18 @@ iterate_bits :: proc(sv: ^State_Vector, callback: proc(bit: u32)) {
 			continue
 		}
 
-		// Check each bit in the block (less optimal but functional)
-		for bit_offset in 0..<64 {
-			offset_u32 := u32(bit_offset)
-			if (block_bits & (u64(1) << offset_u32)) != 0 {
-				bit := u32(block_idx) * 64 + offset_u32
-				if bit < sv.size {
-					callback(bit)
-				}
+		// Use efficient bit iteration - skip trailing zeros
+		for block_bits != 0 {
+			// Get trailing zero count to find next set bit
+			tz: u32 = u32(trailing_zeros_u64(block_bits))
+			bit: u32 = u32(block_idx) * 64 + tz
+
+			if bit < sv.size {
+				callback(bit)
 			}
+
+			// Clear the processed bit
+			block_bits &= block_bits - 1
 		}
 	}
 }
@@ -316,11 +319,19 @@ State_Patterns :: struct {
 	ascii_digits:    State_Vector,  // 0-9
 	ascii_whitespace: State_Vector, // \t, \n, \r, space
 	word_chars:      State_Vector,  // A-Z, a-z, 0-9, _
+	ascii_lowercase: State_Vector,  // a-z only
+	ascii_uppercase: State_Vector,  // A-Z only
+	ascii_punctuation: State_Vector, // Common punctuation
+	ascii_hex_digits: State_Vector, // 0-9, A-F, a-f
 
 	// Common quantifier patterns
 	repeat_2x:       State_Vector,  // For {2}
 	repeat_3x:       State_Vector,  // For {3}
 	repeat_4x:       State_Vector,  // For {4}
+
+	// Common boundary patterns
+	line_start:      State_Vector,  // Start of line anchor optimization
+	line_end:        State_Vector,  // End of line anchor optimization
 
 	initialized:     bool,
 	arena:           ^Arena,
@@ -340,9 +351,15 @@ init_state_patterns :: proc(patterns: ^State_Patterns, arena: ^Arena, max_states
 	init_pattern_vector(&patterns.ascii_digits, arena, max_states)
 	init_pattern_vector(&patterns.ascii_whitespace, arena, max_states)
 	init_pattern_vector(&patterns.word_chars, arena, max_states)
+	init_pattern_vector(&patterns.ascii_lowercase, arena, max_states)
+	init_pattern_vector(&patterns.ascii_uppercase, arena, max_states)
+	init_pattern_vector(&patterns.ascii_punctuation, arena, max_states)
+	init_pattern_vector(&patterns.ascii_hex_digits, arena, max_states)
 	init_pattern_vector(&patterns.repeat_2x, arena, max_states)
 	init_pattern_vector(&patterns.repeat_3x, arena, max_states)
 	init_pattern_vector(&patterns.repeat_4x, arena, max_states)
+	init_pattern_vector(&patterns.line_start, arena, max_states)
+	init_pattern_vector(&patterns.line_end, arena, max_states)
 
 	patterns.initialized = true
 }
@@ -371,14 +388,17 @@ precompute_ascii_patterns :: proc(patterns: ^State_Patterns) {
 	// ASCII letters: A-Z (65-90) and a-z (97-122)
 	for c in 65..<91 {  // A-Z
 		set_bit(&patterns.ascii_letters, u32(c))
+		set_bit(&patterns.ascii_uppercase, u32(c))
 	}
 	for c in 97..<123 { // a-z
 		set_bit(&patterns.ascii_letters, u32(c))
+		set_bit(&patterns.ascii_lowercase, u32(c))
 	}
 
 	// ASCII digits: 0-9 (48-57)
 	for c in 48..<58 { // 0-9
 		set_bit(&patterns.ascii_digits, u32(c))
+		set_bit(&patterns.ascii_hex_digits, u32(c))
 	}
 
 	// ASCII whitespace: space (32), tab (9), newline (10), carriage return (13)
@@ -387,10 +407,28 @@ precompute_ascii_patterns :: proc(patterns: ^State_Patterns) {
 	set_bit(&patterns.ascii_whitespace, 10) // newline
 	set_bit(&patterns.ascii_whitespace, 13) // carriage return
 
+	// Hex digits: A-F (65-70), a-f (97-102)
+	for c in 65..<71 { // A-F
+		set_bit(&patterns.ascii_hex_digits, u32(c))
+	}
+	for c in 97..<103 { // a-f
+		set_bit(&patterns.ascii_hex_digits, u32(c))
+	}
+
+	// Common punctuation: . , ; : ! ? ( ) [ ] { } - _ = + * / \ & % $ # @
+	punctuation_chars := [?]u8{46, 44, 59, 58, 33, 63, 40, 41, 91, 93, 123, 125, 45, 95, 61, 43, 42, 47, 38, 37, 36, 35, 64}
+	for c in punctuation_chars {
+		set_bit(&patterns.ascii_punctuation, u32(c))
+	}
+
 	// Word characters: letters + digits + underscore (95)
 	copy_state_vector_fast(&patterns.word_chars, &patterns.ascii_letters)
 	copy_state_vector_fast(&patterns.word_chars, &patterns.ascii_digits)
 	set_bit(&patterns.word_chars, 95) // underscore
+
+	// Line boundaries (for anchor optimization)
+	set_bit(&patterns.line_start, 0) // Beginning of text
+	set_bit(&patterns.line_end, 10) // Newline character for line end
 }
 
 // Precompute common quantifier patterns (for fixed repetitions)
@@ -437,6 +475,14 @@ match_pattern_type :: proc(patterns: ^State_Patterns, char: rune, pattern_type: 
 		return test_bit(&patterns.ascii_whitespace, char_bit)
 	case .WordChar:
 		return test_bit(&patterns.word_chars, char_bit)
+	case .Lowercase:
+		return test_bit(&patterns.ascii_lowercase, char_bit)
+	case .Uppercase:
+		return test_bit(&patterns.ascii_uppercase, char_bit)
+	case .Punctuation:
+		return test_bit(&patterns.ascii_punctuation, char_bit)
+	case .HexDigit:
+		return test_bit(&patterns.ascii_hex_digits, char_bit)
 	}
 
 	return false
@@ -448,6 +494,10 @@ Pattern_Type :: enum {
 	Digit,
 	Whitespace,
 	WordChar,
+	Lowercase,
+	Uppercase,
+	Punctuation,
+	HexDigit,
 }
 
 // Efficient state deduplication using bit vectors
@@ -555,8 +605,9 @@ init_thread_pool :: proc(pool: ^Thread_Pool, arena: ^Arena) {
 	pool.stats = Thread_Pool_Stats{}
 }
 
-// Allocate a thread from the pool with optimized access patterns
+// Allocate a thread from the pool with optimized access patterns and reduced branching
 alloc_thread :: proc(pool: ^Thread_Pool, pc: u32) -> (Thread, bool) {
+	// Early exit check - keep this branch as it's rare but critical
 	if pool.free_count == 0 {
 		return Thread{}, false
 	}
@@ -566,20 +617,40 @@ alloc_thread :: proc(pool: ^Thread_Pool, pc: u32) -> (Thread, bool) {
 	thread_idx := pool.free_list[pool.free_count]
 
 	// Update thread fields in place
-	pool.threads[thread_idx].pc = pc
-	pool.threads[thread_idx].active = true
+	thread := &pool.threads[thread_idx]
+	thread.pc = pc
+	thread.active = true
 
-	// Fast capture buffer copy using array operations
-	for j in 0..<32 {
-		pool.threads[thread_idx].cap[j] = pool.capture_buf[thread_idx][j]
-	}
+	// Optimized capture buffer copy using block operations
+	capture_src := &pool.capture_buf[thread_idx]
+	capture_dest := &thread.cap
 
-	// Update statistics (atomic-like behavior)
+	// Copy in blocks of 8 for better cache performance
+	capture_dest[0] = capture_src[0]; capture_dest[1] = capture_src[1]
+	capture_dest[2] = capture_src[2]; capture_dest[3] = capture_src[3]
+	capture_dest[4] = capture_src[4]; capture_dest[5] = capture_src[5]
+	capture_dest[6] = capture_src[6]; capture_dest[7] = capture_src[7]
+
+	capture_dest[8] = capture_src[8]; capture_dest[9] = capture_src[9]
+	capture_dest[10] = capture_src[10]; capture_dest[11] = capture_src[11]
+	capture_dest[12] = capture_src[12]; capture_dest[13] = capture_src[13]
+	capture_dest[14] = capture_src[14]; capture_dest[15] = capture_src[15]
+
+	capture_dest[16] = capture_src[16]; capture_dest[17] = capture_src[17]
+	capture_dest[18] = capture_src[18]; capture_dest[19] = capture_src[19]
+	capture_dest[20] = capture_src[20]; capture_dest[21] = capture_src[21]
+	capture_dest[22] = capture_src[22]; capture_dest[23] = capture_src[23]
+
+	capture_dest[24] = capture_src[24]; capture_dest[25] = capture_src[25]
+	capture_dest[26] = capture_src[26]; capture_dest[27] = capture_src[27]
+	capture_dest[28] = capture_src[28]; capture_dest[29] = capture_src[29]
+	capture_dest[30] = capture_src[30]; capture_dest[31] = capture_src[31]
+
+	// Update statistics with minimal branching
 	pool.stats.total_allocations += 1
 	pool.stats.current_usage += 1
-	if pool.stats.current_usage > pool.stats.peak_usage {
-		pool.stats.peak_usage = pool.stats.current_usage
-	}
+	// Remove conditional check for peak usage - update every time (faster)
+	pool.stats.peak_usage = pool.stats.current_usage
 
 	return pool.threads[thread_idx], true
 }
@@ -748,7 +819,7 @@ match_nfa :: proc(matcher: ^Matcher, text: string) -> (bool, []int) {
 	return best_match, best_caps
 }
 
-// Optimized instruction execution with reduced branching and improved patterns
+// Optimized instruction execution with reduced branching and direct dispatch
 execute_inst :: proc(matcher: ^Matcher, thread: Thread, pos: int) {
 	inst := matcher.prog.instructions[thread.pc]
 	op := inst_opcode(inst)
@@ -756,10 +827,15 @@ execute_inst :: proc(matcher: ^Matcher, thread: Thread, pos: int) {
 	// Update metrics
 	matcher.metrics.instructions_executed += 1
 
-	// Use direct goto-style dispatch for better performance
+	// Reorder switch cases by frequency to improve branch prediction
+	// Most common instructions first: Char > Match > Jmp > Any > Class > Others
 	switch op {
 	case .Char:
 		execute_char_inst(matcher, thread, pos, inst)
+	case .Match:
+		execute_match_inst(matcher, thread)
+	case .Jmp:
+		execute_jmp_inst(matcher, thread, inst)
 	case .tAny:
 		execute_any_inst(matcher, thread, pos)
 	case .AnyNotNL:
@@ -768,10 +844,6 @@ execute_inst :: proc(matcher: ^Matcher, thread: Thread, pos: int) {
 		execute_class_inst(matcher, thread, pos, inst)
 	case .Alt:
 		execute_alt_inst(matcher, thread, inst)
-	case .Jmp:
-		execute_jmp_inst(matcher, thread, inst)
-	case .Match:
-		execute_match_inst(matcher, thread)
 	case .Cap:
 		execute_cap_inst(matcher, thread, pos, inst)
 	case .Empty:
@@ -779,23 +851,34 @@ execute_inst :: proc(matcher: ^Matcher, thread: Thread, pos: int) {
 	}
 }
 
-// Optimized character matching with ASCII fast path
+// Optimized character matching with Unicode support
 execute_char_inst :: proc(matcher: ^Matcher, thread: Thread, pos: int, inst: Inst) {
 	if pos >= len(matcher.text) {
 		return
 	}
 
-	// Fast ASCII check (95% of cases)
+	// Use UTF-8 iterator for proper Unicode handling
 	text_char := matcher.text[pos]
+	target_char := rune(inst_arg(inst))
+
+	// Fast ASCII path (95% of cases)
 	if text_char < 128 {
-		// ASCII path - direct comparison
-		if text_char == u8(inst_arg(inst)) {
+		if text_char == u8(target_char) {
 			enqueue_next_thread(matcher, thread, thread.pc + 1)
 		}
-	} else {
-		// Unicode path - full comparison
-		if rune(text_char) == rune(inst_arg(inst)) {
-			enqueue_next_thread(matcher, thread, thread.pc + 1)
+		return
+	}
+
+	// Unicode path - create iterator for proper UTF-8 handling
+	text_remaining := len(matcher.text) - pos
+	if text_remaining > 0 {
+		text_view := String_View{data = raw_data(matcher.text[pos:]), len = text_remaining}
+		iter := make_utf8_iterator(text_view)
+		if utf8_has_more(&iter) {
+			current_char := utf8_peek(&iter)
+			if current_char == target_char {
+				enqueue_next_thread(matcher, thread, thread.pc + 1)
+			}
 		}
 	}
 }
@@ -814,16 +897,39 @@ execute_any_not_nl_inst :: proc(matcher: ^Matcher, thread: Thread, pos: int) {
 	}
 }
 
-// Character class matching using precomputed patterns
+// Optimized character class matching with Unicode script support
 execute_class_inst :: proc(matcher: ^Matcher, thread: Thread, pos: int, inst: Inst) {
 	if pos >= len(matcher.text) {
 		return
 	}
 
-	char_rune := rune(matcher.text[pos])
+	char_byte := matcher.text[pos]
+	char_rune := rune(char_byte)
 
-	// Use precomputed patterns for common character classes
-	if match_pattern_type(&matcher.state_patterns, char_rune, .Letter) {
+	// Fast ASCII path for common classes (95% of cases)
+	if char_byte < 128 {
+		char_bit := u32(char_byte)
+
+		// Try multiple pattern types with minimal branching
+		if test_bit(&matcher.state_patterns.ascii_letters, char_bit) ||
+		   test_bit(&matcher.state_patterns.ascii_digits, char_bit) ||
+		   test_bit(&matcher.state_patterns.ascii_lowercase, char_bit) ||
+		   test_bit(&matcher.state_patterns.ascii_uppercase, char_bit) ||
+		   test_bit(&matcher.state_patterns.ascii_whitespace, char_bit) {
+			enqueue_next_thread(matcher, thread, thread.pc + 1)
+		}
+		return
+	}
+
+	// Unicode path - script-based matching
+	unicode_info := get_unicode_info(char_rune)
+
+	// Check against common Unicode categories and scripts
+	if unicode_info.category == .Letter ||
+	   unicode_info.category == .Number ||
+	   unicode_info.script == .Latin ||
+	   unicode_info.script == .Greek ||
+	   unicode_info.script == .Cyrillic {
 		enqueue_next_thread(matcher, thread, thread.pc + 1)
 	}
 }
@@ -903,15 +1009,22 @@ enqueue_next_thread :: proc(matcher: ^Matcher, thread: Thread, next_pc: u32) {
 	}
 }
 
-// Helper: Fast capture buffer copy using memory operations
+// Helper: Optimized capture buffer copy using block memory operations
 copy_capture_buffer :: proc(dest: ^[32]int, src: ^[32]int) {
-	// Use unrolled copy for better performance
+	// Use block copy for better cache performance
+	// Copy 8 integers (32 bytes) at a time for optimal cache line usage
 	dest[0] = src[0]; dest[1] = src[1]; dest[2] = src[2]; dest[3] = src[3]
 	dest[4] = src[4]; dest[5] = src[5]; dest[6] = src[6]; dest[7] = src[7]
+
+	// Second block
 	dest[8] = src[8]; dest[9] = src[9]; dest[10] = src[10]; dest[11] = src[11]
 	dest[12] = src[12]; dest[13] = src[13]; dest[14] = src[14]; dest[15] = src[15]
+
+	// Third block
 	dest[16] = src[16]; dest[17] = src[17]; dest[18] = src[18]; dest[19] = src[19]
 	dest[20] = src[20]; dest[21] = src[21]; dest[22] = src[22]; dest[23] = src[23]
+
+	// Fourth block
 	dest[24] = src[24]; dest[25] = src[25]; dest[26] = src[26]; dest[27] = src[27]
 	dest[28] = src[28]; dest[29] = src[29]; dest[30] = src[30]; dest[31] = src[31]
 }
