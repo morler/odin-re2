@@ -1,0 +1,326 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-10-20T01:49:30.219Z"
+  },
+  "workUnits": {
+    "REGEX-001": {
+      "id": "REGEX-001",
+      "title": "Pattern Compilation",
+      "type": "story",
+      "status": "done",
+      "createdAt": "2025-10-19T17:31:24.076Z",
+      "updatedAt": "2025-10-19T17:45:16.786Z",
+      "description": "Compile regex patterns from string to AST with error handling",
+      "epic": "regex-engine",
+      "children": [],
+      "stateHistory": [
+        {
+          "state": "specifying",
+          "timestamp": "2025-10-19T17:32:29.594Z"
+        },
+        {
+          "state": "testing",
+          "timestamp": "2025-10-19T17:36:40.446Z"
+        },
+        {
+          "state": "implementing",
+          "timestamp": "2025-10-19T17:37:38.898Z"
+        },
+        {
+          "state": "validating",
+          "timestamp": "2025-10-19T17:43:53.930Z"
+        },
+        {
+          "state": "done",
+          "timestamp": "2025-10-19T17:45:16.788Z"
+        }
+      ],
+      "rules": [
+        "Pattern compilation must validate input syntax and return appropriate error codes",
+        "Empty patterns should be treated as valid literal patterns",
+        "Escape sequences must be properly handled in pattern strings",
+        "Yes, Unicode escape sequences should be supported as part of Unicode property matching",
+        "Use ErrorCode enum with specific error types like ParseError, InternalError",
+        "Character classes should be supported as part of pattern parsing"
+      ],
+      "examples": [
+        "User compiles 'hello' pattern and receives valid AST node",
+        "User compiles empty pattern '' and receives empty literal AST",
+        "User compiles 'hello\\\\sworld' with escape sequence and receives valid AST",
+        "User compiles invalid pattern with trailing backslash and receives ParseError"
+      ],
+      "questions": [
+        {
+          "text": "@human: Should pattern compilation support Unicode escape sequences like \\\\uXXXX?",
+          "selected": true,
+          "answer": "Yes, Unicode escape sequences should be supported as part of Unicode property matching"
+        },
+        {
+          "text": "@human: What error reporting format should be used for syntax errors?",
+          "selected": true,
+          "answer": "Use ErrorCode enum with specific error types like ParseError, InternalError"
+        },
+        {
+          "text": "@human: Should compilation support character classes like [a-z] in initial version?",
+          "selected": true,
+          "answer": "Character classes should be supported as part of pattern parsing"
+        }
+      ],
+      "userStory": {
+        "role": "Odin Developer",
+        "action": "compile regex patterns from strings to AST",
+        "benefit": "I can parse and validate regex patterns before matching"
+      }
+    },
+    "REGEX-002": {
+      "id": "REGEX-002",
+      "title": "NFA Compilation",
+      "type": "story",
+      "status": "backlog",
+      "createdAt": "2025-10-19T17:31:28.071Z",
+      "updatedAt": "2025-10-19T17:31:28.071Z",
+      "description": "Compile AST to NFA program for linear-time execution",
+      "epic": "regex-engine",
+      "children": []
+    },
+    "REGEX-003": {
+      "id": "REGEX-003",
+      "title": "Pattern Matching",
+      "type": "story",
+      "status": "backlog",
+      "createdAt": "2025-10-19T17:31:32.258Z",
+      "updatedAt": "2025-10-19T17:31:32.258Z",
+      "description": "Execute regex matches using NFA engine with capture groups",
+      "epic": "regex-engine",
+      "children": []
+    },
+    "PERF-001": {
+      "id": "PERF-001",
+      "title": "ASCII Fast Path",
+      "type": "story",
+      "status": "backlog",
+      "createdAt": "2025-10-19T17:31:56.337Z",
+      "updatedAt": "2025-10-19T17:31:56.337Z",
+      "description": "Optimize ASCII-only text processing with O(1) character property lookup",
+      "epic": "performance",
+      "children": []
+    },
+    "PERF-002": {
+      "id": "PERF-002",
+      "title": "State Vector Optimization",
+      "type": "story",
+      "status": "backlog",
+      "createdAt": "2025-10-19T17:32:04.245Z",
+      "updatedAt": "2025-10-19T17:32:04.245Z",
+      "description": "Implement 64-byte aligned state vectors for cache efficiency",
+      "epic": "performance",
+      "children": []
+    },
+    "PERF-003": {
+      "id": "PERF-003",
+      "title": "Memory Arena Allocation",
+      "type": "story",
+      "status": "backlog",
+      "createdAt": "2025-10-19T17:32:08.265Z",
+      "updatedAt": "2025-10-19T17:32:08.265Z",
+      "description": "Provide efficient memory management with arena allocation and automatic cleanup",
+      "epic": "memory",
+      "children": []
+    },
+    "UNI-001": {
+      "id": "UNI-001",
+      "title": "Unicode Property Matching",
+      "type": "story",
+      "status": "backlog",
+      "createdAt": "2025-10-19T17:32:20.472Z",
+      "updatedAt": "2025-10-19T17:32:20.472Z",
+      "description": "Support Unicode property matching like \\\\p{Letter} and script detection",
+      "epic": "unicode",
+      "children": []
+    },
+    "UNI-002": {
+      "id": "UNI-002",
+      "title": "Case Folding Support",
+      "type": "story",
+      "status": "backlog",
+      "createdAt": "2025-10-19T17:32:24.824Z",
+      "updatedAt": "2025-10-19T17:32:24.824Z",
+      "description": "Implement Unicode case folding for case-insensitive matching",
+      "epic": "unicode",
+      "children": []
+    },
+    "REGEX-004": {
+      "id": "REGEX-004",
+      "title": "Pattern Matching",
+      "type": "story",
+      "status": "specifying",
+      "createdAt": "2025-10-20T01:40:57.805Z",
+      "updatedAt": "2025-10-20T01:41:12.642Z",
+      "description": "Execute regex matches against text using NFA engine",
+      "epic": "regex-engine",
+      "children": [],
+      "stateHistory": [
+        {
+          "state": "specifying",
+          "timestamp": "2025-10-20T01:41:12.644Z"
+        }
+      ]
+    },
+    "PERF-004": {
+      "id": "PERF-004",
+      "title": "Performance Benchmarking",
+      "type": "story",
+      "status": "specifying",
+      "createdAt": "2025-10-20T01:40:58.996Z",
+      "updatedAt": "2025-10-20T01:41:13.868Z",
+      "description": "Benchmark regex performance with comprehensive test scenarios",
+      "epic": "performance",
+      "children": [],
+      "stateHistory": [
+        {
+          "state": "specifying",
+          "timestamp": "2025-10-20T01:41:13.870Z"
+        }
+      ]
+    },
+    "UNI-003": {
+      "id": "UNI-003",
+      "title": "Unicode Support Implementation",
+      "type": "story",
+      "status": "specifying",
+      "createdAt": "2025-10-20T01:40:59.906Z",
+      "updatedAt": "2025-10-20T01:41:14.586Z",
+      "description": "Implement Unicode property matching and case folding",
+      "epic": "unicode",
+      "children": [],
+      "stateHistory": [
+        {
+          "state": "specifying",
+          "timestamp": "2025-10-20T01:41:14.588Z"
+        }
+      ]
+    },
+    "MEM-001": {
+      "id": "MEM-001",
+      "title": "Memory Management",
+      "type": "story",
+      "status": "specifying",
+      "createdAt": "2025-10-20T01:41:05.501Z",
+      "updatedAt": "2025-10-20T01:41:15.142Z",
+      "description": "Arena-based allocation with 64-byte alignment",
+      "epic": "memory",
+      "children": [],
+      "stateHistory": [
+        {
+          "state": "specifying",
+          "timestamp": "2025-10-20T01:41:15.144Z"
+        }
+      ]
+    },
+    "SIMP-001": {
+      "id": "SIMP-001",
+      "title": "Simplify NFA Engine Architecture",
+      "type": "story",
+      "status": "done",
+      "createdAt": "2025-10-20T01:48:47.793Z",
+      "updatedAt": "2025-10-20T02:40:21.512Z",
+      "description": "Remove over-engineering from matcher.odin and memory.odin - eliminate thread pool, state vectors, and premature optimizations",
+      "children": [],
+      "stateHistory": [
+        {
+          "state": "specifying",
+          "timestamp": "2025-10-20T01:49:01.887Z"
+        },
+        {
+          "state": "testing",
+          "timestamp": "2025-10-20T02:15:07.322Z"
+        },
+        {
+          "state": "implementing",
+          "timestamp": "2025-10-20T02:32:37.155Z"
+        },
+        {
+          "state": "validating",
+          "timestamp": "2025-10-20T02:38:53.475Z"
+        },
+        {
+          "state": "done",
+          "timestamp": "2025-10-20T02:40:21.514Z"
+        }
+      ],
+      "userStory": {
+        "role": "developer maintaining Odin RE2",
+        "action": "simplify the over-engineered NFA engine",
+        "benefit": "I get cleaner, more maintainable code without losing performance or functionality"
+      },
+      "questions": [
+        {
+          "text": "@human: What is our compatibility commitment? Can we change internal APIs while keeping public API stable?",
+          "selected": true,
+          "answer": "Public API must remain completely stable - only internal implementation can change"
+        },
+        {
+          "text": "@human: Do we need to maintain the current 'linear-time performance guarantee' or can we accept small regressions for simplicity?",
+          "selected": true,
+          "answer": "Linear-time performance guarantee is non-negotiable - must be preserved in simplification"
+        },
+        {
+          "text": "@human: Should we simplify only matcher.odin or also clean up memory.odin's over-engineered arena allocator?",
+          "selected": true,
+          "answer": "Clean up both matcher.odin and memory.odin - eliminate over-engineering in both modules"
+        },
+        {
+          "text": "@human: What is our test coverage requirement? Must all existing benchmarks pass after simplification?",
+          "selected": true,
+          "answer": "All existing benchmarks must pass - simplification cannot break performance or correctness"
+        }
+      ],
+      "rules": [
+        "Public API must remain unchanged - no breaking changes for users",
+        "RE2 compatibility must be preserved - all valid regex patterns should behave identically",
+        "Code reduction target: eliminate at least 50% of lines in matcher.odin while maintaining functionality",
+        "Public API must remain completely stable - only internal implementation can change",
+        "Linear-time performance guarantee is non-negotiable - must be preserved in simplification",
+        "Clean up both matcher.odin and memory.odin - eliminate over-engineering in both modules",
+        "All existing benchmarks must pass - simplification cannot break performance or correctness",
+        "Arena allocator should be simplified to basic allocation without over-engineered alignment and pooling",
+        "Thread pool elimination must not affect linear-time guarantee - use simple state management instead"
+      ],
+      "examples": [
+        "Thread pool with 64 threads and complex allocation patterns should be replaced by simple recursive NFA execution",
+        "State vector with bit manipulation and deduplication should be replaced by simple slice of active states",
+        "32-element capture buffer copying should be replaced by dynamic slice allocation only when needed",
+        "Complex 64-byte aligned arena allocation should be replaced by simple 8-byte aligned allocation",
+        "Memory pool with freelist and tracking should be replaced by direct arena allocation",
+        "All benchmark tests (performance, functionality, memory) must pass after simplification"
+      ],
+      "estimate": 8
+    }
+  },
+  "states": {
+    "backlog": [
+      "REGEX-002",
+      "REGEX-003",
+      "PERF-001",
+      "PERF-002",
+      "PERF-003",
+      "UNI-001",
+      "UNI-002"
+    ],
+    "specifying": [
+      "REGEX-004",
+      "PERF-004",
+      "UNI-003",
+      "MEM-001"
+    ],
+    "testing": [],
+    "implementing": [],
+    "validating": [],
+    "done": [
+      "REGEX-001",
+      "SIMP-001"
+    ],
+    "blocked": []
+  }
+}
