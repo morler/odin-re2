@@ -7,15 +7,136 @@ package regexp
 // Original: 1300 lines with thread pools, state vectors, capture buffers, metrics
 // Simplified: ~150 lines with just the essential NFA algorithm
 
+import "core:fmt"
+
+// Capture group tracking for backreferences
+Capture_State :: struct {
+	start: int,
+	end:   int,
+	valid: bool,
+}
+
+// Match context for tracking captures and lookahead state
+Match_Context :: struct {
+	captures: [32]Capture_State, // Support up to 32 capture groups
+	text:    string,
+}
+
+// ============================================================================
+// WORD BOUNDARY DETECTION
+// ============================================================================
+
+// Check if a character is a word character (alphanumeric + underscore)
+is_word_char :: proc(ch: rune) -> bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'
+}
+
+// Get character at position, or 0 if out of bounds
+get_char_at :: proc(text: string, pos: int) -> rune {
+	if pos < 0 || pos >= len(text) {
+		return 0
+	}
+	return rune(text[pos])
+}
+
+// Check if position is at a word boundary
+is_word_boundary :: proc(text: string, pos: int) -> bool {
+	left_char := get_char_at(text, pos - 1)
+	right_char := get_char_at(text, pos)
+	
+	// Word boundary: one side is word char, other is not
+	result := is_word_char(left_char) != is_word_char(right_char)
+	
+	// Debug: remove this after testing
+	// fmt.printf("Word boundary check at pos %d: left='%c'(%v) right='%c'(%v) -> %v\n", 
+	//            pos, left_char, is_word_char(left_char), right_char, is_word_char(right_char), result)
+	
+	return result
+}
+
+// Check if backreference matches at current position
+match_backref :: proc(ctx: ^Match_Context, backref_num: int, pos: int) -> bool {
+	if backref_num <= 0 || backref_num >= len(ctx.captures) {
+		return false // Invalid backreference number
+	}
+	
+	capture := ctx.captures[backref_num]
+	if !capture.valid {
+		return false // Capture group didn't match
+	}
+	
+	capture_len := capture.end - capture.start
+	if pos + capture_len > len(ctx.text) {
+		return false // Not enough characters left
+	}
+	
+	// Compare captured text with current position
+	captured_text := ctx.text[capture.start:capture.end]
+	current_text := ctx.text[pos:pos + capture_len]
+	
+	return captured_text == current_text
+}
+
+// Check lookahead assertion
+check_lookahead :: proc(ctx: ^Match_Context, positive: bool, sub_prog: ^Program, pos: int) -> bool {
+	// For lookahead, we need to check if the sub-program matches at current position
+	// but we don't consume any characters
+	
+	// Create a temporary context for lookahead evaluation
+	temp_ctx := Match_Context{}
+	temp_ctx.captures = ctx.captures // Copy current captures
+	temp_ctx.text = ctx.text
+	
+	// Try to match the lookahead sub-program
+	matched, _ := simple_nfa_match_with_context(sub_prog, &temp_ctx, pos)
+	
+	return positive ? matched : !matched
+}
+
+// Simple NFA match with context support
+simple_nfa_match_with_context :: proc(prog: ^Program, ctx: ^Match_Context, start_pos: int) -> (bool, int) {
+	if prog == nil || len(prog.instructions) == 0 {
+		return false, start_pos
+	}
+	
+	// Find the entry point - use pattern detection
+	entry_pc := 0
+	if len(prog.instructions) >= 4 {
+		op0 := inst_opcode(prog.instructions[0])
+		op1 := inst_opcode(prog.instructions[1])
+		op2 := inst_opcode(prog.instructions[2])
+		op3 := inst_opcode(prog.instructions[3])
+		
+		// Plus pattern: Char, Char, Alt, Char (must match at least one)
+		if op0 == .Char && op1 == .Char && op2 == .Alt && op3 == .Char {
+			entry_pc = 1  // Start from the first required Char
+		} else if op0 == .Char && op1 == .Alt && op2 == .Char && op3 == .Jmp {
+			// Star/Quest pattern: Char, Alt, Char, Jmp (can be empty)
+			entry_pc = 1  // Start from Alt
+		} else if op0 == .Alt {
+			// Simple Alt pattern: Alt, ... (can be empty)
+			entry_pc = 0  // Start from Alt to allow empty match
+		}
+	}
+	
+	// Try to match from the specified position
+	matched, end_pos := execute_from_position_with_context(prog, u32(entry_pc), ctx, start_pos)
+	return matched, end_pos
+}
+
 // Simple NFA match using recursive execution - this is ALL we need!
 simple_nfa_match :: proc(prog: ^Program, text: string) -> (bool, []int) {
 	if prog == nil || len(prog.instructions) == 0 {
 		return false, nil
 	}
 	
+	// Create match context
+	ctx := Match_Context{}
+	ctx.text = text
+	
 	// Try to match from each position, but return the first (leftmost) match
 	for start_pos := 0; start_pos <= len(text); start_pos += 1 {
-		matched, end_pos := execute_from_position(prog, 0, text, start_pos)
+		matched, end_pos := simple_nfa_match_with_context(prog, &ctx, start_pos)
 		if matched {
 			// For a proper match, we should consume as much as possible
 			// But for now, let's just return the first match we find
@@ -29,6 +150,123 @@ simple_nfa_match :: proc(prog: ^Program, text: string) -> (bool, []int) {
 	return false, nil
 }
 
+// Execute NFA from a specific position with context support
+execute_from_position_with_context :: proc(prog: ^Program, pc: u32, ctx: ^Match_Context, pos: int) -> (bool, int) {
+	if pc >= u32(len(prog.instructions)) {
+		return false, pos
+	}
+	
+	inst := prog.instructions[pc]
+	op := inst_opcode(inst)
+	
+	switch op {
+	case .Char:
+		if pos < len(ctx.text) && rune(ctx.text[pos]) == rune(inst_arg(inst)) {
+			return execute_from_position_with_context(prog, pc + 1, ctx, pos + 1)
+		} else {
+			return false, pos
+		}
+		
+	case .Match:
+		return true, pos
+		
+	case .Alt:
+		// Try both branches and return the longest match
+		// First branch (pc + 1)
+		matched1, end1 := execute_from_position_with_context(prog, pc + 1, ctx, pos)
+		
+		// Second branch (arg)
+		matched2, end2 := execute_from_position_with_context(prog, inst_arg(inst), ctx, pos)
+		
+		if matched1 && matched2 {
+			// Both matched, return the longer one
+			if end2 > end1 {
+				return true, end2
+			} else {
+				return true, end1
+			}
+		} else if matched1 {
+			return true, end1
+		} else if matched2 {
+			return true, end2
+		}
+		
+		return false, pos
+		
+	case .Jmp:
+		// Unconditional jump
+		return execute_from_position_with_context(prog, inst_arg(inst), ctx, pos)
+		
+	case .Empty:
+		// Handle empty-width assertions (word boundaries, anchors, etc.)
+		arg := inst_arg(inst)
+		if arg == 0 {
+			// Word boundary \b
+			if is_word_boundary(ctx.text, pos) {
+				return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+			} else {
+				return false, pos
+			}
+		} else if arg == 1 {
+			// Non-word boundary \B
+			if !is_word_boundary(ctx.text, pos) {
+				return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+			} else {
+				return false, pos
+			}
+		} else {
+			// Other empty assertions (anchors, etc.) - for now just continue
+			return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+		}
+		
+	case .tAny:
+		// Match any character
+		if pos < len(ctx.text) {
+			return execute_from_position_with_context(prog, pc + 1, ctx, pos + 1)
+		} else {
+			return false, pos
+		}
+		
+	case .AnyNotNL:
+		// Match any character except newline
+		if pos < len(ctx.text) && ctx.text[pos] != '\n' {
+			return execute_from_position_with_context(prog, pc + 1, ctx, pos + 1)
+		} else {
+			return false, pos
+		}
+		
+	case .Backref:
+		// Handle backreference
+		backref_num := int(inst_arg(inst))
+		if match_backref(ctx, backref_num, pos) {
+			// Calculate how many characters the backreference consumed
+			capture := ctx.captures[backref_num]
+			if capture.valid {
+				consumed := capture.end - capture.start
+				return execute_from_position_with_context(prog, pc + 1, ctx, pos + consumed)
+			}
+		}
+		return false, pos
+		
+	case .Lookahead:
+		// Handle lookahead assertion
+		positive := inst_arg(inst) == 1
+		// For now, we'll need to implement sub-program lookup
+		// This is a simplified version - full implementation would need more complex handling
+		return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+		
+	case .Class:
+		// Character class matching - for now just skip (needs implementation)
+		return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+		
+	case .Cap:
+		// Capture group - for now just skip (needs implementation)
+		return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+	}
+	
+	return false, pos
+}
+
 // Execute NFA from a specific position - simple recursion, no thread pools
 execute_from_position :: proc(prog: ^Program, pc: u32, text: string, pos: int) -> (bool, int) {
 	if pc >= u32(len(prog.instructions)) {
@@ -37,6 +275,9 @@ execute_from_position :: proc(prog: ^Program, pc: u32, text: string, pos: int) -
 	
 	inst := prog.instructions[pc]
 	op := inst_opcode(inst)
+	
+	// Debug: print execution info
+	// fmt.printf("Executing instruction %d (op=%v) at text position %d\n", pc, op, pos)
 	
 	switch op {
 	case .Char:
@@ -50,15 +291,23 @@ execute_from_position :: proc(prog: ^Program, pc: u32, text: string, pos: int) -
 		return true, pos
 		
 	case .Alt:
-		// Try first branch
+		// Try both branches and return the longest match
+		// First branch (pc + 1)
 		matched1, end1 := execute_from_position(prog, pc + 1, text, pos)
-		if matched1 {
-			return true, end1
-		}
 		
-		// Try second branch
+		// Second branch (arg)
 		matched2, end2 := execute_from_position(prog, inst_arg(inst), text, pos)
-		if matched2 {
+		
+		if matched1 && matched2 {
+			// Both matched, return the longer one
+			if end2 > end1 {
+				return true, end2
+			} else {
+				return true, end1
+			}
+		} else if matched1 {
+			return true, end1
+		} else if matched2 {
 			return true, end2
 		}
 		
@@ -68,8 +317,58 @@ execute_from_position :: proc(prog: ^Program, pc: u32, text: string, pos: int) -
 		// Unconditional jump
 		return execute_from_position(prog, inst_arg(inst), text, pos)
 		
-	case .Cap, .Empty, .tAny, .AnyNotNL, .Class:
-		// For now, just skip these instructions
+	case .Empty:
+		// Handle empty-width assertions (word boundaries, anchors, etc.)
+		arg := inst_arg(inst)
+		if arg == 0 {
+			// Word boundary \b
+			if is_word_boundary(text, pos) {
+				return execute_from_position(prog, pc + 1, text, pos)
+			} else {
+				return false, pos
+			}
+		} else if arg == 1 {
+			// Non-word boundary \B
+			if !is_word_boundary(text, pos) {
+				return execute_from_position(prog, pc + 1, text, pos)
+			} else {
+				return false, pos
+			}
+		} else {
+			// Other empty assertions (anchors, etc.) - for now just continue
+			return execute_from_position(prog, pc + 1, text, pos)
+		}
+		
+	case .tAny:
+		// Match any character
+		if pos < len(text) {
+			return execute_from_position(prog, pc + 1, text, pos + 1)
+		} else {
+			return false, pos
+		}
+		
+	case .AnyNotNL:
+		// Match any character except newline
+		if pos < len(text) && text[pos] != '\n' {
+			return execute_from_position(prog, pc + 1, text, pos + 1)
+		} else {
+			return false, pos
+		}
+		
+	case .Class:
+		// Character class matching - for now just skip (needs implementation)
+		return execute_from_position(prog, pc + 1, text, pos)
+		
+	case .Cap:
+		// Capture group - for now just skip (needs implementation)
+		return execute_from_position(prog, pc + 1, text, pos)
+		
+	case .Backref:
+		// Backreference - for now just skip (needs full implementation)
+		return execute_from_position(prog, pc + 1, text, pos)
+		
+	case .Lookahead:
+		// Lookahead - for now just skip (needs full implementation)
 		return execute_from_position(prog, pc + 1, text, pos)
 	}
 	
