@@ -1,0 +1,42 @@
+name	should_compile	compile_ok	should_match	actual_match	verify_full_match	match_verified	compile_ns	match_ns	status	notes
+simple_literal	true	true	true	true	true	true	120300	7400	PASS	
+literal_not_found	true	true	false	false	false	false	7100	200	PASS	
+empty_pattern	true	true	true	true	true	true	61100	23400	PASS	
+empty_text	true	true	false	false	false	false	6100	0	PASS	
+literals_with_metacharacters	true	true	true	true	true	true	8500	200	PASS	
+case_sensitive_fail	true	true	false	false	false	false	5400	100	PASS	
+begin_anchor	true	true	true	true	true	true	16100	11600	PASS	
+begin_anchor_fail	true	true	false	false	false	false	14000	3500	PASS	
+end_anchor	true	true	true	true	true	true	16000	9300	PASS	
+end_anchor_fail	true	true	false	false	false	false	11700	3100	PASS	
+both_anchors	true	true	true	true	true	true	14400	14100	PASS	
+char_class_simple	true	true	true	true	true	true	25900	3700	PASS	
+char_class_range	true	true	false	false	false	false	103700	1900	PASS	
+char_class_negated	true	true	true	true	true	true	118900	11500	PASS	
+char_class_fail	true	true	false	false	false	false	5800	200	PASS	
+dot_wildcard	true	true	true	true	true	true	99500	12900	PASS	
+star_quantifier_zero	true	true	true	true	true	true	43800	23600	PASS	
+star_quantifier_many	true	true	true	true	true	true	28400	5000	PASS	
+plus_quantifier_one	true	true	true	true	true	true	11500	7900	PASS	
+plus_quantifier_fail	true	true	false	false	false	false	10400	0	PASS	
+question_quantifier_present	true	true	true	true	true	true	20200	500	PASS	
+question_quantifier_absent	true	true	true	true	true	true	18400	100	PASS	
+alternation_first	true	true	true	true	true	true	40300	200	PASS	
+alternation_second	true	true	true	true	true	true	33000	200	PASS	
+alternation_fail	true	true	false	false	false	false	39200	200	PASS	
+simple_group	true	true	true	true	true	true	23300	8500	PASS	
+nested_group	true	true	true	true	true	true	15200	7300	PASS	
+repeat_range_match	true	true	true	true	true	true	12700	6000	PASS	
+repeat_range_fail	true	true	false	false	false	false	10100	100	PASS	
+repeat_exact	true	true	true	true	true	true	3900	300	PASS	
+word_boundary	true	true	true	true	true	true	17400	16400	PASS	
+word_boundary_fail	true	true	false	false	false	false	13800	5200	PASS	
+unicode_literal	true	true	true	true	true	true	4500	200	PASS	
+unicode_emoji	true	true	true	true	true	true	2500	100	PASS	
+invalid_pattern	false	false	false	false	false	false	8500	0	PASS	compile_error:regex parse error:     (unclosed     ^ error: unclosed group
+escape_digit	true	true	true	true	true	true	170300	31700	PASS	
+escape_whitespace	true	true	true	true	false	false	110400	7600	PASS	
+escape_word_char	true	true	true	true	true	true	411100	52900	PASS	
+dotall_fail	true	true	false	false	false	false	108600	5700	PASS	
+lazy_quantifier	true	true	true	true	true	true	103800	10200	PASS	
+backreference_not_supported	true	false	false	false	false	false	3600	0	FAIL	compile_error:regex parse error:     (a)b\1         ^^ error: backreferences are not supported

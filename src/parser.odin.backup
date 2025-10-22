@@ -1,0 +1,8 @@
+// This file is backed up to avoid symbol conflicts
+// Original parser implementation - now merged into regexp.odin
+/*
+package regexp
+
+// Parser for RE2-compatible regular expressions  
+// All functionality has been merged into regexp.odin to resolve package conflicts
+*/

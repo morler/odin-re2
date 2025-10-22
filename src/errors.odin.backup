@@ -1,0 +1,8 @@
+// This file is backed up to avoid symbol conflicts  
+// Original error handling implementation - now merged into regexp.odin
+/*
+package regexp
+
+// RE2-compatible error codes and error handling system
+// All functionality has been merged into regexp.odin to resolve package conflicts
+*/

@@ -1,0 +1,202 @@
+package main
+
+import "core:fmt"
+import "core:time"
+import "core:os"
+import "core:strings"
+import "../regexp"
+
+// Standard benchmark test suite for comparing Odin RE2 vs Rust regex
+// This covers the essential regex functionality that matters in real usage
+
+Benchmark_Case :: struct {
+	name:        string,
+	pattern:     string,
+	input:       string,
+	description: string,
+}
+
+// Get benchmark cases - simplified for compilation
+get_benchmark_cases :: proc() -> []Benchmark_Case {
+	cases := make([]Benchmark_Case, 25)
+	
+	// Basic literals - the foundation
+	cases[0] = {"simple_literal", "hello", "hello world", "Simple literal matching"}
+	cases[1] = {"literal_not_found", "xyz", "hello world", "Literal that doesn't match"}
+	
+	// Create long literal pattern
+	long_a := strings.repeat("a", 100)
+	long_a_input := strings.repeat("a", 1000)
+	cases[2] = {"long_literal", long_a, long_a_input, "Long literal pattern"}
+	
+	// Character classes - essential for real-world patterns
+	cases[3] = {"char_class_simple", "[abc]", "b", "Simple character class"}
+	cases[4] = {"char_class_range", "[a-z]", "m", "Character class range"}
+	cases[5] = {"char_class_negated", "[^0-9]", "a", "Negated character class"}
+	cases[6] = {"char_class_complex", "[a-zA-Z0-9_]", "X", "Complex character class"}
+	
+	// Quantifiers - where performance matters most
+	cases[7] = {"star_zero", "a*", "bbb", "Star matching zero occurrences"}
+	cases[8] = {"star_many", "a*", "aaaaab", "Star matching many occurrences"}
+	cases[9] = {"plus_one", "a+", "a", "Plus matching one occurrence"}
+	cases[10] = {"plus_many", "a+", "aaaaa", "Plus matching many occurrences"}
+	cases[11] = {"quest_present", "a?", "a", "Question mark matching"}
+	cases[12] = {"quest_absent", "a?", "b", "Question mark not matching"}
+	
+	// Anchors - important for performance optimization
+	cases[13] = {"begin_anchor", "^hello", "hello world", "Begin anchor"}
+	cases[14] = {"end_anchor", "world$", "hello world", "End anchor"}
+	cases[15] = {"both_anchors", "^hello world$", "hello world", "Both anchors"}
+	
+	// Alternation - tests branching logic
+	cases[16] = {"alt_simple", "cat|dog", "dog", "Simple alternation"}
+	cases[17] = {"alt_multiple", "cat|dog|bird", "bird", "Multiple alternation"}
+	cases[18] = {"alt_complex", "hello|world|test", "world", "Complex alternation"}
+	
+	// Concatenation - most common pattern
+	cases[19] = {"concat_simple", "ab", "ab", "Simple concatenation"}
+	cases[20] = {"concat_long", "abcdefghij", "abcdefghij", "Long concatenation"}
+	cases[21] = {"concat_mixed", "a1b2c3", "a1b2c3", "Mixed concatenation"}
+	
+	// Real-world patterns
+	cases[22] = {"email_simple", "[a-z]+@[a-z]+\\.[a-z]+", "test@example.com", "Simple email pattern"}
+	cases[23] = {"phone_simple", "[0-9]{3}-[0-9]{3}-[0-9]{4}", "555-123-4567", "Simple phone pattern"}
+	cases[24] = {"ipv4_simple", "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}", "192.168.1.1", "Simple IPv4 pattern"}
+	
+	return cases
+}
+
+Benchmark_Result :: struct {
+	case_name:       string,
+	compile_time_ns: i64,
+	match_time_ns:   i64,
+	matched:         bool,
+	error:           regexp.ErrorCode,
+}
+
+// Run single benchmark case
+run_benchmark :: proc(test_case: Benchmark_Case) -> Benchmark_Result {
+	result := Benchmark_Result{case_name = test_case.name}
+	
+	// Measure compilation time
+	compile_start := time.now()
+	pattern, err := regexp.regexp(test_case.pattern)
+	compile_end := time.now()
+	
+	result.compile_time_ns = time.duration_nanoseconds(time.since(compile_start))
+	result.error = err
+	
+	if err != .NoError || pattern == nil {
+		return result
+	}
+	defer regexp.free_regexp(pattern)
+	
+	// Measure matching time
+	match_start := time.now()
+	match_result, match_err := regexp.match(pattern, test_case.input)
+	match_end := time.now()
+	
+	result.match_time_ns = time.duration_nanoseconds(time.since(match_start))
+	result.matched = match_result.matched
+	
+	return result
+}
+
+// Format time duration for human reading
+format_time :: proc(nanoseconds: i64) -> string {
+	if nanoseconds < 1000 {
+		return fmt.tprintf("%dns", nanoseconds)
+	} else if nanoseconds < 1_000_000 {
+		return fmt.tprintf("%.2fμs", f64(nanoseconds) / 1000.0)
+	} else if nanoseconds < 1_000_000_000 {
+		return fmt.tprintf("%.2fms", f64(nanoseconds) / 1_000_000.0)
+	} else {
+		return fmt.tprintf("%.2fs", f64(nanoseconds) / 1_000_000_000.0)
+	}
+}
+
+// Run complete benchmark suite
+main :: proc() {
+	fmt.println("=== Odin RE2 Benchmark Suite ===")
+	
+	benchmark_cases := get_benchmark_cases()
+	fmt.printf("Running %d benchmark cases...\n\n", len(benchmark_cases))
+	
+	total_compile_time := i64(0)
+	total_match_time := i64(0)
+	successful_cases := 0
+	
+	for i in 0..<len(benchmark_cases) {
+		test_case := benchmark_cases[i]
+		
+		fmt.printf("Running: %s\n", test_case.name)
+		fmt.printf("Pattern: %q\n", test_case.pattern)
+		fmt.printf("Input:   %q\n", test_case.input)
+		fmt.printf("Desc:    %s\n", test_case.description)
+		
+		result := run_benchmark(test_case)
+		
+		fmt.printf("Compile: %s\n", format_time(result.compile_time_ns))
+		fmt.printf("Match:   %s\n", format_time(result.match_time_ns))
+		fmt.printf("Result:  %v\n", result.matched)
+		
+		if result.error != .NoError {
+			fmt.printf("Error:   %v\n", result.error)
+		} else {
+			total_compile_time += result.compile_time_ns
+			total_match_time += result.match_time_ns
+			successful_cases += 1
+		}
+		
+		fmt.println(strings.repeat("-", 50))
+	}
+	
+	// Summary statistics
+	fmt.println("\n=== BENCHMARK SUMMARY ===")
+	fmt.printf("Total cases:        %d\n", len(benchmark_cases))
+	fmt.printf("Successful cases:   %d\n", successful_cases)
+	fmt.printf("Failed cases:       %d\n", len(benchmark_cases) - successful_cases)
+	fmt.printf("Total compile time: %s\n", format_time(total_compile_time))
+	fmt.printf("Total match time:   %s\n", format_time(total_match_time))
+	
+	if successful_cases > 0 {
+		avg_compile := total_compile_time / i64(successful_cases)
+		avg_match := total_match_time / i64(successful_cases)
+		fmt.printf("Avg compile time:   %s\n", format_time(avg_compile))
+		fmt.printf("Avg match time:     %s\n", format_time(avg_match))
+	}
+	
+	fmt.println("\n=== PERFORMANCE ANALYSIS ===")
+	
+	// Performance analysis
+	if total_compile_time > 0 {
+		compile_ratio := f64(total_compile_time) / f64(total_match_time)
+		fmt.printf("Compile/Match ratio: %.2fx\n", compile_ratio)
+		
+		if compile_ratio > 10.0 {
+			fmt.println("⚠️  Compilation is significantly slower than matching")
+			fmt.println("   Consider pattern caching for repeated use")
+		} else if compile_ratio > 2.0 {
+			fmt.println("ℹ️  Compilation is slower than matching")
+			fmt.println("   Pattern reuse is beneficial")
+		} else {
+			fmt.println("✅ Compilation overhead is reasonable")
+		}
+	}
+	
+	// Check for linear time behavior indicators
+	if successful_cases >= 10 {
+		avg_total_time := f64(total_compile_time + total_match_time) / f64(successful_cases)
+		if avg_total_time < 100_000 { // Less than 100μs average
+			fmt.println("✅ Performance is excellent - suitable for high-throughput use")
+		} else if avg_total_time < 1_000_000 { // Less than 1ms average
+			fmt.println("✅ Performance is good - suitable for most applications")
+		} else {
+			fmt.println("⚠️  Performance may be a concern for high-throughput applications")
+		}
+	}
+	
+	fmt.println("\n=== READY FOR RUST COMPARISON ===")
+	fmt.println("Run the Rust benchmark suite with the same test cases")
+	fmt.println("to compare performance and functionality.")
+}

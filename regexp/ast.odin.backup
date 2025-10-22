@@ -1,8 +1,0 @@
-// This file is backed up to avoid symbol conflicts
-// Original AST implementation - now merged into regexp.odin
-/*
-package regexp
-
-// RE2 AST Implementation - Exactly as in original RE2
-// All functionality has been merged into regexp.odin to resolve package conflicts
-*/

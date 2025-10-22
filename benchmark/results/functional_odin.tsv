@@ -1,0 +1,42 @@
+name	should_compile	compile_ok	should_match	actual_match	verify_full_match	match_verified	compile_ns	match_ns	status	notes
+simple_literal	true	true	true	true	true	true	26200	5700	PASS	
+literal_not_found	true	true	false	false	false	false	2300	800	PASS	
+empty_pattern	true	true	true	true	true	true	4400	200	PASS	
+empty_text	true	true	false	false	false	false	2700	200	PASS	
+literals_with_metacharacters	true	true	true	true	true	true	6200	1100	PASS	
+case_sensitive_fail	true	true	false	false	false	false	2400	400	PASS	
+begin_anchor	true	true	true	true	true	true	5100	600	PASS	
+begin_anchor_fail	true	true	false	false	false	false	2300	200	PASS	
+end_anchor	true	true	true	true	true	true	4800	1100	PASS	
+end_anchor_fail	true	true	false	false	false	false	2100	1100	PASS	
+both_anchors	true	true	true	true	true	true	6300	1200	PASS	
+char_class_simple	true	true	true	true	true	true	2200	3000	PASS	
+char_class_range	true	true	false	false	false	false	4500	200	PASS	
+char_class_negated	true	true	true	true	true	true	1600	100	PASS	
+char_class_fail	true	true	false	false	false	false	4500	200	PASS	
+dot_wildcard	true	true	true	true	true	true	30400	700	PASS	
+star_quantifier_zero	true	true	true	true	true	true	3200	800	PASS	
+star_quantifier_many	true	true	true	true	true	true	2200	1500	PASS	
+plus_quantifier_one	true	true	true	true	true	true	1700	800	PASS	
+plus_quantifier_fail	true	true	false	false	false	false	2000	400	PASS	
+question_quantifier_present	true	true	true	true	true	true	1900	700	PASS	
+question_quantifier_absent	true	true	true	true	true	true	1600	600	PASS	
+alternation_first	true	true	true	true	true	true	4100	600	PASS	
+alternation_second	true	true	true	true	true	true	3800	700	PASS	
+alternation_fail	true	true	false	false	false	false	3700	1000	PASS	
+simple_group	true	true	true	true	true	true	1900	1100	PASS	
+nested_group	true	true	true	true	true	true	4100	1000	PASS	
+repeat_range_match	true	true	true	true	true	true	25300	700	PASS	
+repeat_range_fail	true	true	false	false	false	false	2200	300	PASS	
+repeat_exact	true	true	true	true	true	true	1500	400	PASS	
+word_boundary	true	false	true	false	true	false	1600	0	FAIL	compile_error:ParseError
+word_boundary_fail	true	false	false	false	false	false	1200	0	FAIL	compile_error:ParseError
+unicode_literal	true	true	true	true	true	true	2900	1300	PASS	
+unicode_emoji	true	true	true	true	true	true	1700	900	PASS	
+invalid_pattern	false	false	false	false	false	false	2200	0	PASS	compile_error:ParseError
+escape_digit	true	true	true	true	true	true	1600	500	PASS	
+escape_whitespace	true	true	true	true	false	false	1100	800	PASS	
+escape_word_char	true	true	true	true	true	true	1900	600	PASS	
+dotall_fail	true	true	false	true	false	false	1600	1400	FAIL	unexpected match
+lazy_quantifier	true	true	true	false	true	false	1900	2300	FAIL	missing expected match
+backreference_not_supported	true	false	false	false	false	false	1100	0	FAIL	compile_error:ParseError

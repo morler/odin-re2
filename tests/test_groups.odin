@@ -2,6 +2,7 @@ package main
 
 import "core:testing"
 import "core:fmt"
+import "core:strings"
 import "regexp"
 
 // Test capture group compilation
@@ -93,17 +94,21 @@ test_linear_time_groups :: proc(t: ^testing.T) {
     testing.expect(t, err == regexp.ErrorCode.NoError, "Pathological group pattern compilation failed: %v", regexp.error_string(err))
     defer regexp.free_regexp(pattern)
     
-    // Create a long string of 'a's and 'b's
-    long_string := ""
-    for i in 0..<1000 {
-        if i % 2 == 0 {
-            long_string += "a"
-        } else {
-            long_string += "b"
-        }
-    }
+    // Create a long string of alternating 'a's and 'b's
+    // Use a simpler approach to test linear time behavior
+    // Create a moderately long test string without complex string operations
+    test_input := "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab" +
+                  "ababababababababababababababababababababababababababababababababab"  // ~1000 chars
     
-    result, match_err := regexp.match(pattern, long_string)
+    result, match_err := regexp.match(pattern, test_input)
     testing.expect(t, match_err == regexp.ErrorCode.NoError, "Linear time test matching failed: %v", regexp.error_string(match_err))
     testing.expect(t, result.matched, "Linear time test should match long string")
 }

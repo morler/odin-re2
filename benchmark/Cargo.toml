@@ -1,0 +1,15 @@
+[package]
+name = "rust_benchmark"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rust_benchmark"
+path = "rust_benchmark.rs"
+
+[[bin]]
+name = "simple_rust_comparison"
+path = "simple_rust_comparison.rs"
+
+[dependencies]
+regex = "1.10"
