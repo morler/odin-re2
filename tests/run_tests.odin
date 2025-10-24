@@ -2,7 +2,7 @@ package main
 
 import "core:testing"
 import "core:fmt"
-import "../src/regexp"
+import "../regexp"
 
 // Import test files by including their content
 // Note: This is a workaround for Odin's test system

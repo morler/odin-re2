@@ -18,8 +18,9 @@ Capture_State :: struct {
 
 // Match context for tracking captures and lookahead state
 Match_Context :: struct {
-	captures: [32]Capture_State, // Support up to 32 capture groups
-	text:    string,
+	captures:      [32]Capture_State, // Support up to 32 capture groups
+	text:          string,
+	visited_states: [dynamic]u64,      // Track visited (pc, pos) pairs to prevent infinite loops
 }
 
 // ============================================================================
@@ -84,6 +85,7 @@ check_lookahead :: proc(ctx: ^Match_Context, positive: bool, sub_prog: ^Program,
 	
 	// Create a temporary context for lookahead evaluation
 	temp_ctx := Match_Context{}
+	temp_ctx.visited_states = make([dynamic]u64, 0, 64)
 	temp_ctx.captures = ctx.captures // Copy current captures
 	temp_ctx.text = ctx.text
 	
@@ -99,25 +101,9 @@ simple_nfa_match_with_context :: proc(prog: ^Program, ctx: ^Match_Context, start
 		return false, start_pos
 	}
 	
-	// Find the entry point - use pattern detection
+	// Always start from position 0 for now
+	// TODO: Optimize entry point detection for complex patterns
 	entry_pc := 0
-	if len(prog.instructions) >= 4 {
-		op0 := inst_opcode(prog.instructions[0])
-		op1 := inst_opcode(prog.instructions[1])
-		op2 := inst_opcode(prog.instructions[2])
-		op3 := inst_opcode(prog.instructions[3])
-		
-		// Plus pattern: Char, Char, Alt, Char (must match at least one)
-		if op0 == .Char && op1 == .Char && op2 == .Alt && op3 == .Char {
-			entry_pc = 1  // Start from the first required Char
-		} else if op0 == .Char && op1 == .Alt && op2 == .Char && op3 == .Jmp {
-			// Star/Quest pattern: Char, Alt, Char, Jmp (can be empty)
-			entry_pc = 1  // Start from Alt
-		} else if op0 == .Alt {
-			// Simple Alt pattern: Alt, ... (can be empty)
-			entry_pc = 0  // Start from Alt to allow empty match
-		}
-	}
 	
 	// Try to match from the specified position
 	matched, end_pos := execute_from_position_with_context(prog, u32(entry_pc), ctx, start_pos)
@@ -132,10 +118,16 @@ simple_nfa_match :: proc(prog: ^Program, text: string) -> (bool, []int) {
 	
 	// Create match context
 	ctx := Match_Context{}
+	ctx.visited_states = make([dynamic]u64, 0, 64)
 	ctx.text = text
 	
 	// Try to match from each position, but return the first (leftmost) match
 	for start_pos := 0; start_pos <= len(text); start_pos += 1 {
+	
+		// Clear visited states for each starting position
+		for len(ctx.visited_states) > 0 {
+			pop(&ctx.visited_states)
+		}
 		matched, end_pos := simple_nfa_match_with_context(prog, &ctx, start_pos)
 		if matched {
 			// For a proper match, we should consume as much as possible
@@ -156,12 +148,31 @@ execute_from_position_with_context :: proc(prog: ^Program, pc: u32, ctx: ^Match_
 		return false, pos
 	}
 	
+	// Prevent infinite recursion by checking if we've already visited this state
+	state_key := u64(pc) << 32 | u64(pos)
+	for visited_state in ctx.visited_states {
+		if visited_state == state_key {
+			return false, pos // Already visited this state, avoid infinite loop
+		}
+	}
+	
+	// Mark this state as visited
+	append(&ctx.visited_states, state_key)
+	defer {
+		// Remove this state from visited when returning
+		if len(ctx.visited_states) > 0 {
+			pop(&ctx.visited_states)
+		}
+	}
+	
 	inst := prog.instructions[pc]
 	op := inst_opcode(inst)
+
 	
 	switch op {
 	case .Char:
-		if pos < len(ctx.text) && rune(ctx.text[pos]) == rune(inst_arg(inst)) {
+		char_arg := inst_arg(inst)
+		if pos < len(ctx.text) && rune(ctx.text[pos]) == rune(char_arg) {
 			return execute_from_position_with_context(prog, pc + 1, ctx, pos + 1)
 		} else {
 			return false, pos
@@ -171,27 +182,38 @@ execute_from_position_with_context :: proc(prog: ^Program, pc: u32, ctx: ^Match_
 		return true, pos
 		
 	case .Alt:
-		// Try both branches and return the longest match
-		// First branch (pc + 1)
-		matched1, end1 := execute_from_position_with_context(prog, pc + 1, ctx, pos)
-		
-		// Second branch (arg)
-		matched2, end2 := execute_from_position_with_context(prog, inst_arg(inst), ctx, pos)
-		
-		if matched1 && matched2 {
-			// Both matched, return the longer one
-			if end2 > end1 {
-				return true, end2
-			} else {
-				return true, end1
-			}
-		} else if matched1 {
-			return true, end1
-		} else if matched2 {
+	// Debug alternation matching
+
+	
+	// Try both branches and return the longest match
+	// First branch (pc + 1)
+	matched1, end1 := execute_from_position_with_context(prog, pc + 1, ctx, pos)
+
+	
+	// Second branch (arg)
+	right_pc := inst_arg(inst)
+	matched2, end2 := execute_from_position_with_context(prog, right_pc, ctx, pos)
+
+	
+	if matched1 && matched2 {
+		// Both matched, return the longer one
+		if end2 > end1 {
+
 			return true, end2
+		} else {
+
+			return true, end1
 		}
-		
-		return false, pos
+	} else if matched1 {
+
+		return true, end1
+	} else if matched2 {
+
+		return true, end2
+	}
+	
+
+	return false, pos
 		
 	case .Jmp:
 		// Unconditional jump
@@ -214,8 +236,22 @@ execute_from_position_with_context :: proc(prog: ^Program, pc: u32, ctx: ^Match_
 			} else {
 				return false, pos
 			}
+		} else if arg == 2 {
+			// Begin anchor (^)
+			if pos == 0 {
+				return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+			} else {
+				return false, pos
+			}
+		} else if arg == 3 {
+			// End anchor ($)
+			if pos == len(ctx.text) {
+				return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+			} else {
+				return false, pos
+			}
 		} else {
-			// Other empty assertions (anchors, etc.) - for now just continue
+			// Other empty assertions - for now just continue
 			return execute_from_position_with_context(prog, pc + 1, ctx, pos)
 		}
 		
@@ -256,8 +292,16 @@ execute_from_position_with_context :: proc(prog: ^Program, pc: u32, ctx: ^Match_
 		return execute_from_position_with_context(prog, pc + 1, ctx, pos)
 		
 	case .Class:
-		// Character class matching - for now just skip (needs implementation)
-		return execute_from_position_with_context(prog, pc + 1, ctx, pos)
+		// Character class matching
+		cc_idx := int(inst_arg(inst))
+		if cc_idx < len(prog.char_classes) && pos < len(ctx.text) {
+			cc_data := &prog.char_classes[cc_idx]
+			ch := rune(ctx.text[pos])
+			if char_class_matches(cc_data, ch) {
+				return execute_from_position_with_context(prog, pc + 1, ctx, pos + 1)
+			}
+		}
+		return false, pos
 		
 	case .Cap:
 		// Capture group - for now just skip (needs implementation)

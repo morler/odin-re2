@@ -1,7 +1,7 @@
 package main
 
 import "core:fmt"
-import "regexp"
+import "../regexp"
 
 main :: proc() {
 	fmt.println("=== Character Classes Test ===")
@@ -60,7 +60,7 @@ main :: proc() {
 			fmt.printf("Error matching '%s': %v\n", s, match_err3)
 			continue
 		}
-		fmt.Printf("'%s' -> %v\n", s, result.matched)
+		fmt.printf("'%s' -> %v\n", s, result.matched)
 	}
 	
 	// Test 4: Any character .
@@ -79,7 +79,7 @@ main :: proc() {
 			fmt.printf("Error matching '%s': %v\n", s, match_err4)
 			continue
 		}
-		fmt.Printf("'%s' -> %v\n", s, result.matched)
+		fmt.printf("'%s' -> %v\n", s, result.matched)
 	}
 	
 	// Test 5: Alternation a|b

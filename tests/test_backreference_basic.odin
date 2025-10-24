@@ -1,7 +1,7 @@
 package main
 
 import "core:fmt"
-import "regexp"
+import "../regexp"
 
 main :: proc() {
 	fmt.println("=== Testing Backreference Support ===")
@@ -25,24 +25,34 @@ main :: proc() {
 		fmt.printf("\nTest: %s\n", test.description)
 		fmt.printf("Pattern: %s, Text: %s\n", test.pattern, test.text)
 		
-		// Compile the pattern
-		ast_node, err := regexp.parse_regexp_internal(test.pattern, .None)
+		// Compile the pattern using public API
+		pattern, err := regexp.regexp(test.pattern)
 		if err != .NoError {
-			fmt.printf("  FAILED: Parse error %v\n", err)
+			fmt.printf("  FAILED: Compilation error %v\n", err)
 			continue
 		}
 		
-		if ast_node == nil {
-			fmt.printf("  FAILED: AST node is nil\n")
+		if pattern == nil {
+			fmt.printf("  FAILED: Pattern is nil\n")
 			continue
 		}
 		
-		// For now, just test that parsing works
-		// Full matching test would require NFA compilation
-		fmt.printf("  PARSED: Successfully parsed backreference pattern\n")
+		// Test matching
+		result, match_err := regexp.match(pattern, test.text)
+		if match_err != .NoError {
+			fmt.printf("  FAILED: Match error %v\n", match_err)
+			regexp.free_regexp(pattern)
+			continue
+		}
+		
+		if result.matched == test.should_match {
+			fmt.printf("  PASSED: Match result %v (expected %v)\n", result.matched, test.should_match)
+		} else {
+			fmt.printf("  FAILED: Match result %v (expected %v)\n", result.matched, test.should_match)
+		}
 		
 		// Clean up
-		regexp.free_arena(ast_node)
+		regexp.free_regexp(pattern)
 	}
 	
 	fmt.println("\n=== Backreference Parsing Test Complete ===")

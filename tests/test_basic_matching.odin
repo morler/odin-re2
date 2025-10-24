@@ -2,7 +2,7 @@ package main
 
 import "core:testing"
 import "core:fmt"
-import "regexp"
+import "../regexp"
 
 // Test basic literal pattern matching
 // This test should FAIL initially, then pass after matching engine implementation
