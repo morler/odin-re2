@@ -5,7 +5,7 @@ import "core:os"
 import os2 "core:os/os2"
 import "core:strings"
 import "core:time"
-import "."
+import "../regexp"
 
 // Test case definition shared with Rust runner through data file
 TestCase :: struct {

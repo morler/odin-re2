@@ -1,0 +1,89 @@
+<!-- OPENSPEC:START -->
+# OpenSpec Instructions
+
+These instructions are for AI assistants working in this project.
+
+Always open `@/openspec/AGENTS.md` when the request:
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
+
+Use `@/openspec/AGENTS.md` to learn:
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
+
+Keep this managed block so 'openspec update' can refresh the instructions.
+
+<!-- OPENSPEC:END -->
+
+# Repository Guidelines
+
+## Project Structure & Module Organization
+- `main.odin` wires the CLI entry point and demonstration harness.
+- `regexp/` contains the core engine: `parser.odin`, `matcher.odin`, `inst.odin`, and `memory.odin` for arena-based allocation.
+- `tests/` hosts generated executables and `test_*.odin` cases consumed by `run_tests.odin`; treat `.odin.bak` as live sources managed by automation.
+- `examples/` shows high-level usage; `docs/` stores spec notes; `benchmark/` compares Odin and Rust RE2 runners; `debug/` captures reproducible diagnostics—keep artifacts small.
+
+## Build, Test, and Development Commands
+- `odin build . -o:speed` produces `odin-re2.exe` with release optimizations.
+- `odin test .` runs module-level unit tests embedded in the Odin packages.
+- `odin test run_tests.odin` executes the custom integration suite that stitches the `.bak` cases together.
+- `odin run benchmark/performance_benchmark.odin` validates throughput against the reference data in `benchmark/target`.
+
+## Coding Style & Naming Conventions
+- Format with `odin fmt .` before committing; the codebase assumes tab indentation and 100-column lines.
+- Keep package names lower_snake_case (`regexp`), proc names lower_snake_case (`new_matcher`), and types in UpperCamelCase (`Matcher`).
+- Favor explicit slices and structs over interface-style abstractions; avoid ad-hoc heap usage—leverage the arena helpers in `regexp/memory.odin`.
+
+## Testing Guidelines
+- New scenarios belong in `tests/test_<feature>.odin` with `@(test)` procs and descriptive log output for debugging.
+- Ensure each test covers both matching and error behavior to guard the RE2 compatibility promise.
+- When touching performance-sensitive paths, capture benchmarks via `odin run benchmark/performance_benchmark.odin` and document deltas in the PR.
+
+## Commit & Pull Request Guidelines
+- Follow the existing `type: summary` convention (`feat: add sparse set allocator`). Keep the first line ≤72 characters.
+- PRs must describe the change, list affected modules, reference related specs in `specs/001-odin-odin-re2`, and attach test or benchmark output.
+- Flag potential compatibility risks explicitly; the bar is "never break existing users" even for experimental agents.
+
+## Global Rules
+- **Use Chinese for conversations**, and write documents in English.
+- Write documents in markdown format.
+- Don't mark unfinished tasks as complete or simplify tasks for the sake of completing them, and be honest, serious, and responsible
+- The current system is running in the MSYS2 environment under Win11, please pay attention to the path format conversion when calling the tool
+- **Proactively use the CodeIndex tool for code analysis, search, read, edit and rewrite**
+- **Don't use heredoc in git commit**
+
+## Project Documentation Standards
+
+### Core Documentation Files
+- **PROJECT_STANDARDS.md**: Complete project specifications and coding standards
+- **CONTRIBUTING.md**: Contribution guidelines and development workflow
+- **CHANGELOG.md**: Version history and release notes
+- **SECURITY.md**: Security policies and vulnerability reporting
+- **LICENSE**: MIT license terms
+- **docs/DEVELOPMENT.md**: Detailed development guide for contributors
+
+### Documentation Hierarchy
+1. **README.md**: Project overview and quick start
+2. **PROJECT_STANDARDS.md**: Comprehensive project standards
+3. **docs/**: Detailed documentation
+   - API.md: Complete API reference
+   - PERFORMANCE.md: Performance characteristics
+   - DEVELOPMENT.md: Development guide
+   - SyntaxReference.md: Syntax documentation
+   - Examples.md: Usage examples
+
+### When to Reference Documentation
+- **Planning/Proposals**: Always check `@/openspec/AGENTS.md` first
+- **Code Standards**: Reference `PROJECT_STANDARDS.md` for coding conventions
+- **Contributions**: Follow `CONTRIBUTING.md` for contribution workflow
+- **Security Issues**: Consult `SECURITY.md` for security policies
+- **Development**: Use `docs/DEVELOPMENT.md` for detailed development guidance
+
+### Documentation Updates
+- All new features must update relevant documentation
+- API changes require `docs/API.md` updates
+- Performance changes need `docs/PERFORMANCE.md` updates
+- Version releases must update `CHANGELOG.md`
+- Security fixes require `SECURITY.md` updates

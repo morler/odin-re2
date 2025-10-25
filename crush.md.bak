@@ -1,0 +1,66 @@
+# Odin RE2 Development Guide
+
+## Build Commands
+- `odin build . -o:speed` - Build optimized release
+- `odin test .` - Run unit tests
+- `odin test run_tests.odin` - Run integration test suite
+- `odin test tests/test_name.odin` - Run single test file
+- `odin run benchmark/performance_benchmark.odin` - Performance validation
+- `odin fmt .` - Format code (REQUIRED before commits)
+- `odin check . -vet -vet-style` - Lint and style checking
+
+## Code Style
+
+### Naming
+- Packages: `lower_snake_case` (`regexp`)
+- Procedures: `lower_snake_case` (`parse_regexp_internal`, `new_matcher`)
+- Types: `UpperCamelCase` (`Matcher`, `Regexp`, `ErrorCode`)
+- Constants: `UPPER_SNAKE_CASE` for enum values (`.NoError`, `.OpLiteral`)
+- Variables: `lower_snake_case` (`arena`, `program`, `pattern`)
+
+### Formatting
+- Use TAB indentation (4-space width)
+- Max 100 characters per line
+- Use `//` for comments, `/* */` for multi-line
+
+### Imports
+```odin
+import "core:fmt"
+import "core:strings"
+import "core:testing"
+```
+
+## Error Handling
+Always use error-first return pattern:
+```odin
+result, err := some_function()
+if err != .NoError {
+    // handle error
+    return err
+}
+```
+
+## Memory Management
+Use arena allocation for performance-critical code:
+```odin
+arena := regexp.new_arena()
+defer regexp.free_arena(arena)  // Auto cleanup
+```
+
+## Testing
+Use `@(test)` procedures with testing.T:
+```odin
+@(test)
+test_feature_name :: proc(t: ^testing.T) {
+    pattern, err := regexp.regexp("test")
+    defer regexp.free_regexp(pattern)
+    testing.expect(t, err == .NoError, "Pattern compilation failed")
+    testing.expect(t, condition, "message: %v", value)
+}
+```
+
+## Performance Requirements
+- Maintain 85%+ RE2 matching performance
+- Use memory pools for hot paths
+- Prefer O(n) algorithms
+- Always benchmark performance changes

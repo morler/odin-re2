@@ -1,8 +1,0 @@
-name	pattern	text_size	iterations	compile_ns	match_total_ns	match_avg_ns	throughput_mb_s	matched	status	notes
-literal_repeat_small	hello	16384	1000	15700	769649600	769649	20.3014	false	FAIL	expected match missing
-literal_repeat_large	benchmark	1048576	200	9500	963865600	4819328	207.4978	true	PASS	
-wildcard_inject	a.*b	131072	500	7200	2941781300	5883562	21.2456	false	FAIL	expected match missing
-char_class_mixed	[A-Za-z0-9_]{8,16}	262144	400	7100	478701100	1196752	208.8986	true	PASS	
-quantifier_complex	([A-Z][a-z]+\d+){2,4}	262144	300	7600	355693600	1185645	210.8556	true	PASS	
-unicode_emoji	😊+	65536	800	4400	4236282300	5295352	11.8028	true	PASS	
-anchors_long	^start.*end$	131072	400	7800	243356900	608392	205.4596	false	FAIL	expected match missing

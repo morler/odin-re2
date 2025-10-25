@@ -1,0 +1,32 @@
+# Odin RE2 vs Rust regex – Functionality Comparison
+
+_Generated on 2025-10-22 16:37:27_
+
+## Summary
+- Total cases: **41**
+- Odin passes: **30**
+- Rust passes: **40**
+- Both pass: **30**
+- Mismatches: **11**
+
+## Detailed Mismatches
+
+| Case | Odin Status | Rust Status | Odin Match | Rust Match | Notes |
+|------|-------------|-------------|------------|------------|-------|
+| alternation_first | FAIL | PASS | False | True | Odin: missing expected match / Rust: - |
+| alternation_second | FAIL | PASS | False | True | Odin: missing expected match / Rust: - |
+| backreference_not_supported | FAIL | FAIL | True | False | Odin: unexpected match / Rust: compile_error:regex parse error:     (a)b\1         ^^ error: backreferences are not supported |
+| escape_digit | FAIL | PASS | True | True | Odin: expected_full_match:1234, got:1 / Rust: - |
+| escape_word_char | FAIL | PASS | True | True | Odin: expected_full_match:token, got:t / Rust: - |
+| lazy_quantifier | FAIL | PASS | False | True | Odin: missing expected match / Rust: - |
+| nested_group | FAIL | PASS | True | True | Odin: expected_full_match:abcabc, got:abc / Rust: - |
+| question_quantifier_absent | FAIL | PASS | False | True | Odin: missing expected match / Rust: - |
+| question_quantifier_present | FAIL | PASS | False | True | Odin: missing expected match / Rust: - |
+| simple_group | FAIL | PASS | True | True | Odin: expected_full_match:abab, got:ab / Rust: - |
+| star_quantifier_many | FAIL | PASS | False | True | Odin: missing expected match / Rust: - |
+
+## Data Artifacts
+- `functional_odin.tsv` – raw Odin results
+- `functional_rust.tsv` – raw Rust results
+
+> These TSV files use tab delimiters and UTF-8 encoding.

@@ -1,0 +1,42 @@
+name	should_compile	compile_ok	should_match	actual_match	verify_full_match	match_verified	compile_ns	match_ns	status	notes
+simple_literal	true	true	true	true	true	true	27300	12100	PASS	
+literal_not_found	true	true	false	false	false	false	2200	2400	PASS	
+empty_pattern	true	true	true	true	true	true	4100	1600	PASS	
+empty_text	true	true	false	false	false	false	4400	2900	PASS	
+literals_with_metacharacters	true	true	true	true	true	true	5000	3200	PASS	
+case_sensitive_fail	true	true	false	false	false	false	5500	2000	PASS	
+begin_anchor	true	true	true	true	true	true	2200	4500	PASS	
+begin_anchor_fail	true	true	false	false	false	false	5500	2500	PASS	
+end_anchor	true	true	true	false	true	false	5200	3100	FAIL	missing expected match
+end_anchor_fail	true	true	false	false	false	false	1800	2500	PASS	
+both_anchors	true	true	true	false	true	false	6900	5400	FAIL	missing expected match
+char_class_simple	true	true	true	false	true	false	5600	2000	FAIL	missing expected match
+char_class_range	true	true	false	false	false	false	5100	1400	PASS	
+char_class_negated	true	true	true	false	true	false	1700	1500	FAIL	missing expected match
+char_class_fail	true	true	false	false	false	false	5600	1900	PASS	
+dot_wildcard	true	true	true	true	true	true	2800	6300	PASS	
+star_quantifier_zero	true	true	true	true	true	true	23000	3400	PASS	
+star_quantifier_many	true	true	true	false	true	false	2000	9600	FAIL	missing expected match
+plus_quantifier_one	true	true	true	true	true	true	1800	2400	PASS	
+plus_quantifier_fail	true	true	false	false	false	false	2100	1800	PASS	
+question_quantifier_present	true	true	true	false	true	false	2000	1900	FAIL	missing expected match
+question_quantifier_absent	true	true	true	false	true	false	2000	1700	FAIL	missing expected match
+alternation_first	true	true	true	false	true	false	4400	3100	FAIL	missing expected match
+alternation_second	true	true	true	false	true	false	3600	2400	FAIL	missing expected match
+alternation_fail	true	true	false	false	false	false	3900	2500	PASS	
+simple_group	true	true	true	true	true	false	2100	3400	FAIL	expected_full_match:abab, got:ab
+nested_group	true	true	true	true	true	false	2800	3200	FAIL	expected_full_match:abcabc, got:abc
+repeat_range_match	true	true	true	true	true	true	2200	3700	PASS	
+repeat_range_fail	true	true	false	false	false	false	5800	2100	PASS	
+repeat_exact	true	true	true	true	true	true	42500	2600	PASS	
+word_boundary	true	true	true	false	true	false	2700	6000	FAIL	missing expected match
+word_boundary_fail	true	true	false	false	false	false	2300	11000	PASS	
+unicode_literal	true	true	true	true	true	true	2300	7000	PASS	
+unicode_emoji	true	true	true	true	true	true	2000	2600	PASS	
+invalid_pattern	false	false	false	false	false	false	1800	0	PASS	compile_error:ParseError
+escape_digit	true	true	true	false	true	false	1500	2600	FAIL	missing expected match
+escape_whitespace	true	true	true	false	false	false	1100	2400	FAIL	missing expected match
+escape_word_char	true	true	true	false	true	false	1100	2300	FAIL	missing expected match
+dotall_fail	true	true	false	false	false	false	1800	2400	PASS	
+lazy_quantifier	true	true	true	false	true	false	1700	2100	FAIL	missing expected match
+backreference_not_supported	true	true	false	true	false	false	2200	2000	FAIL	unexpected match

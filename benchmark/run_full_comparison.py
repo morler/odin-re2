@@ -116,7 +116,12 @@ def parse_args() -> argparse.Namespace:
 def run_command(cmd: List[str], cwd: Path, verbose: bool) -> None:
     if verbose:
         print(f"[cmd] {' '.join(cmd)}")
-    subprocess.run(cmd, cwd=cwd, check=True)
+    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Command failed with exit code {result.returncode}")
+        print(f"STDOUT: {result.stdout}")
+        print(f"STDERR: {result.stderr}")
+        raise subprocess.CalledProcessError(result.returncode, cmd)
 
 
 def str_to_bool(value: str) -> bool:
@@ -456,45 +461,33 @@ def main() -> None:
         func_runner = (REPO_ROOT / args.odin_runner).resolve()
         perf_runner = (REPO_ROOT / args.perf_odin_runner).resolve()
 
-        if func_bin.exists():
-            try:
-                func_bin.unlink()
-            except OSError:
-                pass
         run_command(
             [
                 "odin",
                 "run",
-                str(func_runner),
+                str(func_runner.relative_to(REPO_ROOT)),
                 "-file",
-                f"-out:{func_bin}",
                 "--",
                 "-cases",
-                str(cases_path),
+                str(cases_path.relative_to(REPO_ROOT)),
                 "-output",
-                str(func_odin_output),
+                str(func_odin_output.relative_to(REPO_ROOT)),
             ],
             cwd=REPO_ROOT,
             verbose=args.verbose,
         )
 
-        if perf_bin.exists():
-            try:
-                perf_bin.unlink()
-            except OSError:
-                pass
         run_command(
             [
                 "odin",
                 "run",
-                str(perf_runner),
+                str(perf_runner.relative_to(REPO_ROOT)),
                 "-file",
-                f"-out:{perf_bin}",
                 "--",
                 "-scenarios",
-                str(perf_cases_path),
+                str(perf_cases_path.relative_to(REPO_ROOT)),
                 "-output",
-                str(perf_odin_output),
+                str(perf_odin_output.relative_to(REPO_ROOT)),
             ],
             cwd=REPO_ROOT,
             verbose=args.verbose,
@@ -506,6 +499,8 @@ def main() -> None:
                 "run",
                 "--quiet",
                 "--release",
+                "--bin",
+                "rust_benchmark",
                 "--",
                 "--mode",
                 "functionality",
@@ -524,6 +519,8 @@ def main() -> None:
                 "run",
                 "--quiet",
                 "--release",
+                "--bin",
+                "rust_benchmark",
                 "--",
                 "--mode",
                 "performance",

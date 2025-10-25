@@ -1,0 +1,37 @@
+# Odin RE2 vs Rust regex – Performance Comparison
+
+_Generated on 2025-10-22 16:37:27_
+
+## Summary
+- Total scenarios: **7**
+- Odin avg throughput: **96.26 MB/s**
+- Rust avg throughput: **4272713.50 MB/s**
+- Avg throughput ratio (Odin/Rust): **0.01**
+- Odin faster on: **0** scenarios
+- Rust faster on: **7** scenarios
+- Mismatches: **2**
+
+## Status Mismatches
+
+| Scenario | Odin Status | Rust Status | Notes |
+|----------|-------------|-------------|-------|
+| anchors_long | FAIL | PASS | Odin: expected match missing / Rust: - |
+| wildcard_inject | FAIL | PASS | Odin: expected match missing / Rust: - |
+
+## Detailed Results
+
+| Scenario | Text Size | Iterations | Odin Avg ns | Rust Avg ns | Odin MB/s | Rust MB/s | Ratio (O/R) | Status (O/R) | Notes |
+|----------|-----------|------------|--------------|--------------|-----------|-----------|--------------|---------------|-------|
+| anchors_long | 131072 | 400 | 7382437 | 218762 | 16.93 | 571.40 | 0.03 | FAIL/PASS | Odin: expected match missing / Rust: - |
+| char_class_mixed | 262144 | 400 | 1173206 | 72 | 213.09 | 3448275.86 | 0.00 | PASS/PASS | Odin: - / Rust: - |
+| literal_repeat_large | 1048576 | 200 | 4636481 | 40 | 215.68 | 25000000.00 | 0.00 | PASS/PASS | Odin: - / Rust: - |
+| literal_repeat_small | 16384 | 1000 | 868583 | 460 | 17.99 | 33952.63 | 0.00 | FAIL/FAIL | Odin: expected match missing / Rust: expected match missing |
+| quantifier_complex | 262144 | 300 | 18779906 | 435769 | 13.31 | 573.70 | 0.02 | FAIL/FAIL | Odin: expected match missing / Rust: expected match missing |
+| unicode_emoji | 65536 | 800 | 351615 | 111 | 177.75 | 561167.23 | 0.00 | PASS/PASS | Odin: - / Rust: - |
+| wildcard_inject | 131072 | 500 | 6549110 | 144 | 19.09 | 864453.67 | 0.00 | FAIL/PASS | Odin: expected match missing / Rust: - |
+
+## Data Artifacts
+- `performance_odin.tsv` – raw Odin results
+- `performance_rust.tsv` – raw Rust results
+
+> These TSV files use tab delimiters and UTF-8 encoding.
