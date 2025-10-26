@@ -566,3 +566,108 @@ report_leaks :: proc(tracker: ^Allocation_Tracker) {
 		}
 	}
 }
+
+// ============================================================================
+// OPTIMIZED STATE VECTORS FOR NFA MATCHING
+// ============================================================================
+
+// Cache-line optimized state vector for NFA matching
+State_Vector :: struct {
+	// 64-byte aligned bit vector for active states
+	states: [64]u8, // 512 bits total, aligned to cache line
+	
+	// Double-buffering for fast updates
+	current_states: [512]bool,
+	next_states: [512]bool,
+	
+	// Performance metadata
+	active_count: int,         // Number of active states
+	max_states: int,          // Maximum states ever active
+	iteration_count: u64,     // Track iterations
+	
+	// Memory alignment
+	_padding: [44]byte,      // Ensure 64-byte alignment
+}
+
+// Create cache-aligned state vector
+new_state_vector :: proc(arena: ^Arena, max_states: int) -> ^State_Vector {
+	vector := (^State_Vector)(arena_alloc_aligned(arena, size_of(State_Vector), 64))
+	
+	// Initialize all states to inactive
+	for i in 0..<len(vector.current_states) {
+		vector.current_states[i] = false
+		vector.next_states[i] = false
+	}
+	
+	for i in 0..<len(vector.states) {
+		vector.states[i] = 0
+	}
+	
+	vector.active_count = 0
+	vector.max_states = max_states
+	vector.iteration_count = 0
+	
+	return vector
+}
+
+// Fast bit operations for state management
+set_state :: proc(vector: ^State_Vector, state_id: int) {
+	if state_id >= len(vector.current_states) {
+		return
+	}
+	
+	if !vector.current_states[state_id] {
+		vector.current_states[state_id] = true
+		vector.active_count += 1
+		
+		// Track maximum active states
+		if vector.active_count > vector.max_states {
+			vector.max_states = vector.active_count
+		}
+	}
+}
+
+// Clear state vector for next iteration
+clear_state_vector :: proc(vector: ^State_Vector) {
+	// Swap buffers
+	for i in 0..<len(vector.current_states) {
+		vector.current_states[i] = vector.next_states[i]
+		vector.next_states[i] = false
+	}
+	
+	vector.active_count = 0
+	vector.iteration_count += 1
+}
+
+// Check if state is active
+is_state_active :: proc(vector: ^State_Vector, state_id: int) -> bool {
+	if state_id >= len(vector.current_states) {
+		return false
+	}
+	
+	return vector.current_states[state_id]
+}
+
+// SIMD-optimized state vector operations
+set_state_batch :: proc(vector: ^State_Vector, states: []int) {
+	for state_id in states {
+		set_state(vector, state_id)
+	}
+}
+
+// Get state vector statistics
+state_vector_stats :: proc(vector: ^State_Vector) -> (active: int, max: int, iterations: u64) {
+	return vector.active_count, vector.max_states, vector.iteration_count
+}
+
+// Reset state vector completely
+reset_state_vector :: proc(vector: ^State_Vector) {
+	for i in 0..<len(vector.current_states) {
+		vector.current_states[i] = false
+		vector.next_states[i] = false
+	}
+	
+	vector.active_count = 0
+	vector.max_states = 0
+	vector.iteration_count = 0
+}

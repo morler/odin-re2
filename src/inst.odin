@@ -487,6 +487,7 @@ finalize_program :: proc(prog: ^Program, frag: Fragment) {
 // ===========================================================================
 
 // Compile AST to Thompson NFA
+@public
 compile_nfa :: proc(ast: ^Regexp, arena: ^Arena) -> (^Program, ErrorCode) {
 	if ast == nil {
 		return nil, .ParseError

@@ -9,9 +9,19 @@ package regexp
 // • NFA-based matching for complex patterns
 // • UTF-8 validation and character class handling
 // • Quantifier and capture group support
+// • ASCII fast path optimizations
 // ============================================================================
 
 import "core:fmt"
+
+// Initialize the regexp package with performance optimizations
+init_regexp_package :: proc() {
+	// Initialize ASCII classification table for fast path
+	init_ascii_classification()
+	
+	// Initialize SIMD support if available
+	init_simd_support()
+}
 
 // ============================================================================
 // REMOVED RECURSION DEPTH MONITORING
@@ -48,7 +58,11 @@ Range :: struct {
 // ============================================================================
 
 // Compile a regex pattern
+@public
 regexp :: proc(pattern: string) -> (^Regexp_Pattern, ErrorCode) {
+	// Initialize performance optimizations
+	init_regexp_package()
+	
 	// Create pattern structure
 	p := new(Regexp_Pattern)
 	p.arena = new_arena(4096) // 4KB initial arena
@@ -83,6 +97,7 @@ regexp :: proc(pattern: string) -> (^Regexp_Pattern, ErrorCode) {
 }
 
 // Free a compiled pattern
+@public
 free_regexp :: proc(pattern: ^Regexp_Pattern) {
 	if pattern == nil {
 		return
@@ -227,6 +242,7 @@ extract_string_from_ast :: proc(ast: ^Regexp) -> string {
 // ============================================================================
 
 // Match pattern using NFA for linear-time performance (optimized)
+@public
 match_nfa_pattern :: proc(ast: ^Regexp, text: string) -> (bool, []int) {
 	if ast == nil {
 		return false, nil
@@ -375,6 +391,75 @@ char_class_matches :: proc(char_class: ^CharClass_Data, ch: rune) -> bool {
 		return false
 	}
 	
+	// ASCII fast path optimization
+	if ch >= 0 && ch < 128 {
+		return char_class_matches_ascii_fast(char_class, ch)
+	}
+	
+	// Unicode fallback for non-ASCII characters
+	return char_class_matches_unicode(char_class, ch)
+}
+
+// Fast ASCII character class matching using O(1) classification
+char_class_matches_ascii_fast :: proc(char_class: ^CharClass_Data, ch: rune) -> bool {
+	// Initialize ASCII classification if not already done
+	// This should be called once at program startup
+	when false {
+		init_ascii_classification()
+	}
+	
+	// Special case: simple ASCII ranges can be optimized
+	if len(char_class.ranges) == 1 {
+		range := char_class.ranges[0]
+		// Check if it's a simple ASCII range like [a-z], [A-Z], [0-9]
+		if range.lo >= 0 && range.hi < 128 {
+			if ch >= range.lo && ch <= range.hi {
+				return !char_class.negated
+			} else {
+				return char_class.negated
+			}
+		}
+	}
+	
+	// Special case: common ASCII character classes
+	if len(char_class.ranges) == 2 {
+		// Check for [a-zA-Z] pattern
+		if char_class.ranges[0].lo == 'a' && char_class.ranges[0].hi == 'z' &&
+		   char_class.ranges[1].lo == 'A' && char_class.ranges[1].hi == 'Z' {
+			matched := is_ascii_letter(ch)
+			return char_class.negated ? !matched : matched
+		}
+		
+		// Check for [0-9] pattern
+		if char_class.ranges[0].lo == '0' && char_class.ranges[0].hi == '9' &&
+		   len(char_class.ranges) == 1 {
+			matched := is_ascii_number(ch)
+			return char_class.negated ? !matched : matched
+		}
+	}
+	
+	// For ASCII word characters [a-zA-Z0-9_]
+	if len(char_class.ranges) == 3 {
+		if char_class.ranges[0].lo == 'a' && char_class.ranges[0].hi == 'z' &&
+		   char_class.ranges[1].lo == 'A' && char_class.ranges[1].hi == 'Z' &&
+		   char_class.ranges[2].lo == '0' && char_class.ranges[2].hi == '9' {
+			matched := is_ascii_word_char(ch)
+			return char_class.negated ? !matched : matched
+		}
+	}
+	
+	// Fallback to range checking for ASCII (still faster than Unicode)
+	for i in 0..<len(char_class.ranges) {
+		range := char_class.ranges[i]
+		if ch >= range.lo && ch <= range.hi {
+			return !char_class.negated
+		}
+	}
+	return char_class.negated
+}
+
+// Unicode character class matching (fallback)
+char_class_matches_unicode :: proc(char_class: ^CharClass_Data, ch: rune) -> bool {
 	// Check each range
 	for i in 0..<len(char_class.ranges) {
 		range := char_class.ranges[i]

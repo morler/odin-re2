@@ -262,22 +262,8 @@ is_category :: proc(ch: rune, category: Unicode_Category) -> bool {
 	return get_unicode_category(ch) == category
 }
 
-// Fast ASCII checks (95% of cases)
-is_ascii_letter :: proc(ch: rune) -> bool {
-	return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')
-}
-
-is_ascii_digit :: proc(ch: rune) -> bool {
-	return ch >= '0' && ch <= '9'
-}
-
-is_ascii_whitespace :: proc(ch: rune) -> bool {
-	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
-}
-
-is_ascii_word_char :: proc(ch: rune) -> bool {
-	return is_ascii_letter(ch) || is_ascii_digit(ch) || ch == '_'
-}
+// Note: ASCII optimization functions moved to utf8_optimized.odin
+// to avoid duplication and use the optimized table-based approach
 
 // ===========================================================================
 // PERFORMANCE-OPTIMIZED UNICODE PROPERTY LOOKUPS

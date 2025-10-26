@@ -53,6 +53,7 @@ at_end :: proc(p: ^Parser) -> bool {
 }
 
 // Parse a regular expression (main entry point)
+@public
 parse_regexp_internal :: proc(pattern: string, flags: Parse_Flags) -> (^Regexp, ErrorCode) {
 	// Don't free the arena here - caller will handle cleanup via clone_node
 	arena := new_arena(4096)

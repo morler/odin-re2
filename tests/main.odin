@@ -1,7 +1,7 @@
 package main
 
 import "core:fmt"
-import "../regexp"
+import "../src/regexp"
 
 // Test quantifier fixes
 main :: proc() {

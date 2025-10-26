@@ -3,7 +3,7 @@ package main
 import "core:fmt"
 import "core:time"
 import "core:strings"
-import "regexp"
+import "../src/regexp" as regexp
 
 TestResult :: struct {
 	name:        string,
