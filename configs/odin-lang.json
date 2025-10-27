@@ -1,0 +1,40 @@
+{
+  "name": "odin-lang",
+  "url": "https://odin-lang.org/docs/",
+  "description": "Use for Odin programming language documentation, including syntax reference, standard library, build system, and tutorials",
+  "max_pages": 200,
+  "rate_limit": 1.0,
+  "selectors": {
+    "content": "main article, .content, .documentation, #main-content, article, .docs-content",
+    "title": "h1, .title, .page-title",
+    "code": "pre code, code, .code-block",
+    "navigation": "nav, .navigation, .sidebar, .toc",
+    "ignore": ".header, .footer, .ads, .comments, .social-share"
+  },
+  "patterns": {
+    "include": [
+      "/docs/*",
+      "/documentation/*",
+      "/learn/*",
+      "/reference/*",
+      "/api/*",
+      "/tutorials/*"
+    ],
+    "exclude": [
+      "/docs/search*",
+      "/docs/print*",
+      "/docs/pdf*",
+      "*/edit",
+      "*/history",
+      "*/discuss"
+    ]
+  },
+  "headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+  },
+  "output": {
+    "format": "skill",
+    "include_metadata": true,
+    "include_toc": true
+  }
+}
